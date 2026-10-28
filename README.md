@@ -1,84 +1,89 @@
-# AgentPing development environment
+# AgentPing
 
-The development environment is configured. **AgentPing itself has not been
-implemented.** Starting implementation requires a separate user instruction.
+MCP-controlled notifications, reminders and alarms for the user's Android phones.
 
-AgentPing will use Python/FastAPI + official MCP SDK, Neon PostgreSQL, a durable
-worker, FCM, and Kotlin/Compose Android. Deployment must fit INR 500/month or less;
-the always-on Cloud Run worker-pool proposal has been withdrawn. Evaluate
-event-driven Cloud Run or existing-VM reuse before deployment. Railway is excluded.
-See [environment inventory](docs/environment.md),
-[verification results](docs/verification.md), [cloud setup](docs/google-cloud.md),
-and [security/configuration](docs/configuration.md).
+The **backend** (FastAPI, Streamable HTTP MCP, PostgreSQL outbox worker, FCM) is
+implemented and runs locally. The **Android app is not implemented**. Production
+hosting is not deployed; Auth0/OIDC is deferred and required before public exposure.
+Budget for any future hosting: INR 500/month or less.
 
-## Commands available now
+- [API](docs/api.md)
+- [MCP](docs/mcp.md)
+- [Scheduling](docs/scheduling.md)
+- [Reliability / outbox](docs/reliability.md)
+- [Infrastructure](docs/infrastructure.md)
+- [Testing](docs/testing.md)
+- Setup inventory: [environment](docs/environment.md), [configuration](docs/configuration.md),
+  [Google Cloud](docs/google-cloud.md), [verification](docs/verification.md)
 
-Run from the repository root:
+## Local stack (Docker Compose)
+
+PostgreSQL, migrations, API and worker on the loopback interface:
 
 ```sh
-./dev doctor
-./dev imports
-./dev db-check
-./dev firebase-check
+python3 infra/compose_env.py          # once; writes ignored .env.compose*
+docker compose up --build
+./dev stack-smoke                     # REST + worker + MCP HTTP + stdio proxy
+```
+
+API: `http://127.0.0.1:8000`. Docs: `/docs` (disabled when `APP_ENV=production`).
+The development bearer token lives in `.env.compose` / `.env.local`; do not print it.
+
+Optional real FCM from the worker (impersonated ADC, no service-account key):
+
+```sh
+docker compose -f compose.yaml -f compose.fcm.yaml up --build
+```
+
+That overlay only proves provider acceptance. It is not device delivery.
+
+## Commands
+
+Run from the repository root. `./dev` loads host SDK paths and `.env.local` via uv.
+
+```sh
+./dev doctor              # host tools
+./dev imports             # Python imports
+./dev db-check            # TLS probe of verified Neon dev/test hosts
+./dev firebase-check      # FCM validate-only (not device delivery)
+./dev test-db             # start the isolated pytest database
+./dev test                # pytest (needs test-db)
+./dev lint
+./dev migrate upgrade head
+./dev api                 # uvicorn on API_HOST/API_PORT
+./dev worker              # durable outbox worker
+./dev worker --once
+./dev admin create-agent --name cursor --output ~/.config/agentping/agent.token
+./dev fcm-check           # validate-only; probe-token rejection means credentials work
+./dev inspector           # MCP Inspector 2.12.0
+./dev mcp-stdio           # stdio adapter; needs AGENTPING_MCP_URL and AGENTPING_TOKEN
+```
+
+Direct equivalents:
+
+```sh
 uv sync --project backend --locked
 uv run --project backend --locked pytest -c backend/pyproject.toml -q
-uv run --project backend --locked ruff check --config backend/pyproject.toml infra
-uv run --project backend --locked ruff format --check --config backend/pyproject.toml infra
-uv run --project backend --locked mypy --config-file backend/pyproject.toml infra/smoke.py
-./dev inspector --version
-./dev inspector
+uv run --project backend --locked ruff check --config backend/pyproject.toml backend infra
+uv run --project backend --locked mypy --config-file backend/pyproject.toml backend/src backend/tests
 ```
 
-`firebase-check` refreshes impersonated credentials and calls FCM with
-`dry_run=True`. It never delivers a notification. `db-check` only opens verified
-development/test hosts and runs read-only queries. Neither provisions resources.
+## Authentication (development)
 
-The `dev` wrapper loads the secret-free host tooling fragment if present, then
-uses uv with the locked backend environment and ignored `.env.local`.
-Inspector is version-pinned and launched through npx; its per-launch local
-authentication token must remain private.
+`AUTH_MODE=development` accepts `DEV_AUTH_TOKEN` as the account owner. Create
+agent tokens (`apa_…`) and device tokens (`apd_…`) through the API or
+`agentping-admin`. Agents cannot change settings, manage agents, or register
+devices. Critical alerts need `alerts:critical` and the user's opt-in.
 
-## Android emulator
+OIDC (`AUTH_MODE=oidc`) is wired but unused until Auth0 (or similar) is configured.
 
-One Google Play ARM64 API 36 AVD, `AgentPing_API36`, is configured. A headless
-instance was booted and tested on serial `emulator-5556` during setup.
+## MCP
 
-```sh
-. "$HOME/.config/agentping/env.sh"
-adb devices -l
-emulator -avd AgentPing_API36 -port 5556 -no-window -no-audio -no-snapshot-save
-adb -s emulator-5556 shell getprop sys.boot_completed
-adb -s emulator-5556 logcat
-```
+Streamable HTTP at `/mcp` (JSON responses, DNS-rebinding protection). Clients that
+only speak stdio should launch `agentping-mcp-stdio`. See [docs/mcp.md](docs/mcp.md).
 
-Do not start a second instance of the same AVD while it is running. For a visible
-emulator, omit `-no-window`. A connected physical phone needs USB debugging and
-authorization on the phone. Real notification/alarm behavior still needs testing
-on a physical phone during implementation.
+## What is not in this repository yet
 
-## Cloud access
-
-```sh
-gcloud --configuration=agentping config list
-gcloud --configuration=agentping run services list --region=asia-southeast1
-gcloud --configuration=agentping run worker-pools list --region=asia-southeast1
-firebase projects:list
-neon branches list --project-id empty-surf-03967309
-```
-
-The named gcloud configuration is separate from the default configuration.
-Neon is locally linked to `agentping-dev`. Never run `neon env pull` against
-production, and avoid bare env pulls that may request unrelated service tokens.
-No production database URL has been retrieved or stored by setup.
-
-## Next implementation stage
-
-Once authorized, initialize the actual backend package, Gradle wrapper/Android
-project, first Alembic migration, shared service layer, CI and backend image.
-Use an async psycopg/SQLAlchemy engine for request handling and a synchronous
-direct engine for Alembic. Use the configured runtime and migration credentials
-for their intended purposes.
-
-Only after those modules exist will API/worker start commands, application tests,
-APK builds, device registration and end-to-end MCP/FCM checks become available.
-No command above claims that those application components currently exist.
+- Kotlin/Compose Android app, Gradle project, APK
+- Production DNS, Cloud Run/VM deployment, Railway (excluded)
+- Managed OAuth/OIDC login

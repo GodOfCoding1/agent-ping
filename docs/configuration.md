@@ -19,11 +19,14 @@ loads it through uv, not through shell evaluation.
 | FIREBASE_PROJECT_ID | `personalvm-511016` |
 | ANDROID_APPLICATION_ID | `com.errorfactory.agentping` |
 | AUTH_MODE / DEV_AUTH_TOKEN | Isolated local development authentication seed |
+| PUBLIC_BASE_URL | Origin used for MCP resource metadata and host allow-lists |
+| PUSH_PROVIDER | `log` (default), `fcm`, or `disabled` |
+| WORKER_* / EMBEDDED_WORKER | Outbox worker, LISTEN URL, optional HTTP trigger token |
 | OIDC_* | Intentionally blank until managed sign-in is configured |
 
-The development token has been generated, but no application exists to enforce
-it yet. The application must bind it to explicit local scopes/agent identity and
-refuse this mode in production. It is not a production authentication system.
+The development token is bound to the owner principal when `AUTH_MODE=development`.
+`APP_ENV=production` refuses that mode. It is not a production authentication system.
+See `.env.example` for the full variable list.
 
 SQLAlchemy URLs must explicitly select psycopg (`postgresql+psycopg`). Raw libpq
 URLs in the environment are normalized by the setup probes. Both pooled and direct

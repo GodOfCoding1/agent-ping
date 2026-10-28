@@ -1,0 +1,95 @@
+# Local development stack: PostgreSQL + migrations + API + worker.
+#   python3 infra/compose_env.py   # once: writes .env.compose and .env.compose.db (mode 0600)
+#   docker compose up --build
+# FCM delivery from the worker: add -f compose.fcm.yaml (mounts local ADC read-only).
+# Secrets live only in those ignored env files; nothing secret is interpolated here.
+name: agentping
+
+x-backend: &backend
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  image: agentping-backend:dev
+  env_file:
+    - path: .env.compose
+      required: true
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:17-alpine
+    env_file:
+      - path: .env.compose.db
+        required: true
+    environment:
+      POSTGRES_DB: agentping
+      POSTGRES_USER: agentping_migrator
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:${AGENTPING_DB_PORT:-55432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentping_migrator -d agentping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  test-db:
+    profiles: ["test"]
+    image: postgres:17-alpine
+    env_file:
+      - path: .env.compose.db
+        required: true
+    environment:
+      POSTGRES_DB: agentping
+      POSTGRES_USER: agentping_migrator
+    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
+    tmpfs:
+      - /var/lib/postgresql/data
+    volumes:
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:${AGENTPING_TEST_DB_PORT:-55433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentping_migrator -d agentping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    <<: *backend
+    env_file:
+      - path: .env.compose
+        required: true
+      - path: .env.compose.db
+        required: true
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *backend
+    command: ["agentping-api"]
+    environment:
+      FORWARDED_ALLOW_IPS: "*"
+    ports:
+      - "${AGENTPING_API_BIND:-127.0.0.1}:${AGENTPING_API_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *backend
+    command: ["agentping-worker"]
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

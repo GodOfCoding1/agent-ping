@@ -1,5 +1,10 @@
 # Environment readiness verification
 
+Backend application checks (2026-10-28) are in [testing.md](testing.md): local
+pytest 131 passed, Compose stack smoke exit 0, Alembic `0002` on Neon dev/test,
+FCM validate-only `credentials_ok_probe_token_rejected_as_expected` (not device
+delivery). Setup-only results below are unchanged.
+
 Budget update, 2026-10-28: the user set a deployment target of INR 500/month or less.
 The earlier continuous Cloud Run worker-pool proposal was withdrawn. A fresh
 inventory found no Cloud Run services, worker pools, jobs, Artifact Registry

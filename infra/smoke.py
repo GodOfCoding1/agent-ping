@@ -26,7 +26,9 @@ def emit(check: str, status: str, **details: Any) -> None:
 
 
 def run(command: list[str], timeout: int = 30) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, text=True, capture_output=True, timeout=timeout, check=False)
+    return subprocess.run(
+        command, text=True, capture_output=True, timeout=timeout, check=False
+    )
 
 
 def doctor() -> int:
@@ -83,13 +85,24 @@ def doctor() -> int:
             failed = True
     if shutil.which("gcloud"):
         result = run(
-            ["gcloud", "auth", "list", "--filter=status:ACTIVE", "--format=value(account)"]
+            [
+                "gcloud",
+                "auth",
+                "list",
+                "--filter=status:ACTIVE",
+                "--format=value(account)",
+            ]
         )
         emit(
             "gcloud_login",
             "PASS" if result.returncode == 0 and result.stdout.strip() else "PENDING",
         )
-    for name in ["DATABASE_URL", "MIGRATION_DATABASE_URL", "FIREBASE_PROJECT_ID", "OIDC_ISSUER"]:
+    for name in [
+        "DATABASE_URL",
+        "MIGRATION_DATABASE_URL",
+        "FIREBASE_PROJECT_ID",
+        "OIDC_ISSUER",
+    ]:
         emit(name, "CONFIGURED" if os.environ.get(name) else "PENDING")
     emit("neon_verified_context", "CONFIGURED" if CONTEXT.exists() else "PENDING")
     return int(failed)
@@ -115,7 +128,9 @@ def import_check() -> int:
     return 0
 
 
-def guarded_url(name: str, environment: Mapping[str, str], context: Mapping[str, Any]) -> URL:
+def guarded_url(
+    name: str, environment: Mapping[str, str], context: Mapping[str, Any]
+) -> URL:
     """Require an API-verified nonproduction endpoint before opening any connection."""
     if environment.get("APP_ENV") not in {"development", "test"}:
         raise ValueError("Set APP_ENV to development or test")
@@ -142,7 +157,11 @@ def guarded_url(name: str, environment: Mapping[str, str], context: Mapping[str,
 
 def database_check() -> int:
     if not CONTEXT.exists():
-        emit("database", "PENDING", reason="Neon login and verified development context required")
+        emit(
+            "database",
+            "PENDING",
+            reason="Neon login and verified development context required",
+        )
         return 2
     context = json.loads(CONTEXT.read_text())
     failed = False
@@ -173,10 +192,14 @@ def database_check() -> int:
                 if value != 1 or not tls:
                     raise RuntimeError("Read-only query or TLS verification failed")
                 can_create: bool = connection.execute(
-                    text("SELECT has_schema_privilege(current_user, 'public', 'CREATE')")
+                    text(
+                        "SELECT has_schema_privilege(current_user, 'public', 'CREATE')"
+                    )
                 ).scalar_one()
                 if can_create != ("MIGRATION" in name):
-                    raise RuntimeError("Unexpected runtime or migration schema privileges")
+                    raise RuntimeError(
+                        "Unexpected runtime or migration schema privileges"
+                    )
             emit(name, "PASS", query="SELECT 1", tls=True)
         except Exception as error:
             # Driver exception messages can embed credentials or connection strings.
@@ -210,12 +233,15 @@ def firebase_check() -> int:
             credential_type=f"{type(credentials).__module__}.{type(credentials).__name__}",
         )
         app = firebase_admin.initialize_app(
-            admin_credentials.ApplicationDefault(), {"projectId": project}, name="setup-probe"
+            admin_credentials.ApplicationDefault(),
+            {"projectId": project},
+            name="setup-probe",
         )
         try:
             messaging.send(
                 messaging.Message(
-                    topic="agentping-environment-check", data={"probe": "credential-validation"}
+                    topic="agentping-environment-check",
+                    data={"probe": "credential-validation"},
                 ),
                 dry_run=True,
                 app=app,
@@ -223,7 +249,11 @@ def firebase_check() -> int:
             emit("fcm_validate_only", "PASS", delivered=False)
         finally:
             firebase_admin.delete_app(app)
-        emit("fcm_delivery", "NOT_RUN", reason="Application and device registration token required")
+        emit(
+            "fcm_delivery",
+            "NOT_RUN",
+            reason="Application and device registration token required",
+        )
         return 0
     except Exception as error:
         emit("firebase_adc", "FAIL", error_type=type(error).__name__)
@@ -232,7 +262,9 @@ def firebase_check() -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["doctor", "imports", "db-check", "firebase-check"])
+    parser.add_argument(
+        "command", choices=["doctor", "imports", "db-check", "firebase-check"]
+    )
     args = parser.parse_args()
     actions = {
         "doctor": doctor,

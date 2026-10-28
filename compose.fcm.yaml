@@ -1,0 +1,14 @@
+# Optional overlay: real FCM sends from the worker using local Google ADC
+# (impersonated, short-lived credentials; no service-account key).
+#   docker compose -f compose.yaml -f compose.fcm.yaml up --build
+# Only the worker sends pushes, so only it receives the credential mount.
+services:
+  api:
+    environment:
+      PUSH_PROVIDER: fcm
+  worker:
+    environment:
+      PUSH_PROVIDER: fcm
+      GOOGLE_APPLICATION_CREDENTIALS: /run/adc/application_default_credentials.json
+    volumes:
+      - ${GCLOUD_CONFIG_DIR:-~/.config/gcloud}/application_default_credentials.json:/run/adc/application_default_credentials.json:ro

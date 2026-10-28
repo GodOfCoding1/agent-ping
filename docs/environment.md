@@ -30,9 +30,10 @@ Configured on 2026-10-28, Asia/Kolkata. Host: macOS 26.6.2 arm64, 16 GiB RAM.
 | Railway | Not installed | Excluded by user |
 
 Backend environment: `backend/.venv`, exact resolution in `backend/uv.lock`.
-Verified principal dependencies: FastAPI 0.162.0, MCP 2.3.0, SQLAlchemy 2.1.6,
-psycopg 3.3.6, Alembic 1.20.1, Pydantic 2.14.1, Firebase Admin 7.7.0,
-Uvicorn 0.54.0, pytest 9.2.0, Ruff 0.17.3 and mypy 1.20.2.
+The application package lives in `backend/src/agentping`. Principal dependencies:
+FastAPI 0.162.0, MCP 2.3.0, SQLAlchemy 2.1.6, psycopg 3.3.6, Alembic 1.20.1,
+Pydantic 2.14.1, Firebase Admin 7.7.0, Uvicorn 0.54.0, pytest 9.2.0, Ruff 0.17.3
+and mypy 1.20.2.
 
 ## Host configuration
 
@@ -68,5 +69,5 @@ Gcloud now runs in `~/.config/gcloud/virtenv`; no global pip or sudo pip was use
 - https://py.sdk.modelcontextprotocol.io/
 - https://docs.astral.sh/uv/guides/projects/
 
-The initial future build baseline is AGP 9.2.x / Gradle wrapper 9.4.1 / JDK 21 /
-API 36. Revalidate stable Kotlin/Compose/KSP versions when implementation starts.
+The initial Android build baseline is AGP 9.2.x / Gradle wrapper 9.4.1 / JDK 21 /
+API 36. Revalidate stable Kotlin/Compose/KSP versions when the Android app is built.

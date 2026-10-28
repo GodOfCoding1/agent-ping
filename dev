@@ -1,17 +1,79 @@
 #!/bin/sh
-# Host setup and smoke checks only; application commands are intentionally absent.
+# AgentPing developer entrypoint. Loads host tooling, then either a setup probe or
+# an application command. Secrets come from ignored .env.local via uv, never shell eval.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 if [ -f "$HOME/.config/agentping/env.sh" ]; then
   . "$HOME/.config/agentping/env.sh"
 fi
 if [ "$#" -eq 0 ]; then set -- doctor; fi
-if [ "$1" = inspector ]; then
-  shift
-  exec npx --yes @modelcontextprotocol/inspector@2.12.0 "$@"
-fi
-if [ -f "$ROOT/.env.local" ]; then
-  exec uv run --project "$ROOT/backend" --locked --env-file "$ROOT/.env.local" \
-    python "$ROOT/infra/smoke.py" "$@"
-fi
-exec uv run --project "$ROOT/backend" --locked python "$ROOT/infra/smoke.py" "$@"
+CMD=$1
+shift
+
+run_uv() {
+  if [ -f "$ROOT/.env.local" ]; then
+    uv run --project "$ROOT/backend" --locked --env-file "$ROOT/.env.local" "$@"
+  else
+    uv run --project "$ROOT/backend" --locked "$@"
+  fi
+}
+
+case "$CMD" in
+  doctor|imports|db-check|firebase-check)
+    run_uv python "$ROOT/infra/smoke.py" "$CMD"
+    ;;
+  inspector)
+    exec npx --yes @modelcontextprotocol/inspector@2.12.0 "$@"
+    ;;
+  compose-env)
+    exec python3 "$ROOT/infra/compose_env.py" "$@"
+    ;;
+  compose)
+    exec docker compose -f "$ROOT/compose.yaml" "$@"
+    ;;
+  test-db)
+    exec docker compose -f "$ROOT/compose.yaml" --profile test up -d test-db
+    ;;
+  test)
+    run_uv pytest -c "$ROOT/backend/pyproject.toml" "$@"
+    ;;
+  lint)
+    cd "$ROOT/backend"
+    run_uv ruff check .
+    run_uv ruff format --check .
+    run_uv mypy src tests
+    ;;
+  migrate)
+    cd "$ROOT/backend"
+    run_uv alembic "$@"
+    ;;
+  api)
+    run_uv agentping-api
+    ;;
+  worker)
+    run_uv agentping-worker "$@"
+    ;;
+  admin)
+    run_uv agentping-admin "$@"
+    ;;
+  fcm-check)
+    run_uv agentping-admin fcm-check "$@"
+    ;;
+  stack-smoke)
+    run_uv python "$ROOT/infra/stack_smoke.py"
+    ;;
+  mcp-stdio)
+    run_uv agentping-mcp-stdio
+    ;;
+  *)
+    cat <<EOF
+Usage: ./dev <command> [args]
+
+Setup probes:     doctor | imports | db-check | firebase-check | inspector
+Local stack:      compose-env | compose [...] | test-db | stack-smoke
+Application:      api | worker | migrate [...] | admin [...] | fcm-check | mcp-stdio
+Quality:          test | lint
+EOF
+    exit 2
+    ;;
+esac

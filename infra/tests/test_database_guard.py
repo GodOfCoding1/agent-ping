@@ -54,7 +54,10 @@ def test_valid_context_selects_psycopg_without_exposing_password(context):
 
 
 def test_test_credentials_cannot_use_development_endpoint(context):
-    context["test"] = {"branch_id": "br-test", "pooled_host": "test-pooler.example.invalid"}
+    context["test"] = {
+        "branch_id": "br-test",
+        "pooled_host": "test-pooler.example.invalid",
+    }
     values = environment()
     values["TEST_DATABASE_URL"] = values["DATABASE_URL"]
     with pytest.raises(ValueError, match="Endpoint"):
