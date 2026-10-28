@@ -1,0 +1,17 @@
+#!/bin/sh
+# Host setup and smoke checks only; application commands are intentionally absent.
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ -f "$HOME/.config/agentping/env.sh" ]; then
+  . "$HOME/.config/agentping/env.sh"
+fi
+if [ "$#" -eq 0 ]; then set -- doctor; fi
+if [ "$1" = inspector ]; then
+  shift
+  exec npx --yes @modelcontextprotocol/inspector@2.12.0 "$@"
+fi
+if [ -f "$ROOT/.env.local" ]; then
+  exec uv run --project "$ROOT/backend" --locked --env-file "$ROOT/.env.local" \
+    python "$ROOT/infra/smoke.py" "$@"
+fi
+exec uv run --project "$ROOT/backend" --locked python "$ROOT/infra/smoke.py" "$@"
