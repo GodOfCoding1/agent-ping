@@ -99,13 +99,14 @@ class AgentPingTokenVerifier:
 
     async def verify_token(self, token: str) -> AccessToken | None:
         try:
-            principal = await self._authenticator.authenticate(token)
+            principal = await self._authenticator.authenticate(token, for_mcp=True)
         except DomainError:
             return None
         return PrincipalAccessToken(
             token="[redacted]",
             client_id=str(principal.agent_client_id or principal.device_id or principal.user_id),
             scopes=sorted(principal.scopes),
+            resource=self._authenticator.runtime.settings.mcp_resource_url,
             subject=str(principal.user_id),
             principal=principal,
         )
@@ -140,7 +141,7 @@ def build_mcp_server(runtime: Runtime, authenticator: Authenticator) -> MCPServe
         issuer_url=settings.oidc_issuer or settings.public_base_url,  # type: ignore[arg-type]
         resource_server_url=settings.mcp_resource_url,  # type: ignore[arg-type]
         required_scopes=None,
-        validate_token_resource=False,
+        validate_token_resource=True,
     )
     server: MCPServer = MCPServer(
         "agentping",

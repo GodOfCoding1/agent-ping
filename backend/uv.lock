@@ -9,6 +9,7 @@ source = { editable = "." }
 dependencies = [
     { name = "alembic" },
     { name = "certifi" },
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "firebase-admin" },
     { name = "google-auth" },
@@ -37,6 +38,7 @@ dev = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.16,<2" },
     { name = "certifi", specifier = ">=2026.1.4" },
+    { name = "cryptography", specifier = ">=46,<51" },
     { name = "fastapi", specifier = ">=0.162,<1" },
     { name = "firebase-admin", specifier = ">=7.7,<8" },
     { name = "google-auth", specifier = ">=2.40,<3" },

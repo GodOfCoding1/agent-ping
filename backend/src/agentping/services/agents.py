@@ -241,3 +241,24 @@ async def revoke_token(ctx: ServiceContext, token_id: uuid.UUID) -> None:
             category="security",
             details={"token_id": str(token.id)},
         )
+
+
+async def reauthorize_agent(ctx: ServiceContext, agent_id: uuid.UUID) -> AgentView:
+    """Explicit owner approval permits new OAuth tokens; old tokens stay invalid."""
+    _require_manager(ctx)
+    await ctx.lock_user()
+    agent = await _load(ctx, agent_id)
+    if agent.kind != "oidc":
+        raise Conflict("Create a new credential for a revoked token agent")
+    if agent.status == AgentStatus.REVOKED.value:
+        agent.status = AgentStatus.ACTIVE.value
+        agent.revoked_at = None
+        agent.oauth_not_before = int(ctx.now.timestamp()) + 1
+        await audit(
+            ctx,
+            "agent.reauthorized",
+            f"New OAuth login allowed for '{agent.name}'",
+            category="security",
+            details={"agent_id": str(agent.id)},
+        )
+    return await _view(ctx, agent)

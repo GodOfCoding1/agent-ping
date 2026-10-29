@@ -5,13 +5,17 @@ MCP-controlled notifications, reminders and alarms for the user's Android phones
 The **backend** (FastAPI, Streamable HTTP MCP, PostgreSQL outbox worker, FCM) is
 implemented and runs locally. The **Android app** implements pairing, Firebase
 notifications, offline sync/actions, local alarms and Material 3 reminder management. See [Android development](android/README.md). Production
-backend hosting is deployed privately on Cloud Run with Google Cloud IAM and
-Google OIDC owner authentication. Android production release/login remains deferred.
-See [production backend](docs/production.md) for access, verification and costs.
-Budget for any future hosting: INR 500/month or less.
+backend hosting uses Cloud Run with Auth0 OAuth, independent user accounts and a
+separate IAM-private worker. Native Codex login, live refresh, MCP tools, portal access and revocation checks
+have succeeded; a second live user is still needed to close the public launch gate. Android production
+release/login remains deferred. See [OAuth operations](docs/production-oauth-operations.md),
+[next steps](docs/next-steps.md) and [production cost evidence](docs/production.md).
+Deployment budget: INR 500/month or less.
 
 - [API](docs/api.md)
 - [MCP](docs/mcp.md)
+- [Next steps: Codex connection and production Android](docs/next-steps.md)
+- [Production OAuth and multi-user launch plan](docs/production-oauth-plan.md)
 - [Scheduling](docs/scheduling.md)
 - [Reliability / outbox](docs/reliability.md)
 - [Infrastructure](docs/infrastructure.md)
@@ -93,7 +97,8 @@ agent tokens (`apa_…`) and device tokens (`apd_…`) through the API or
 `agentping-admin`. Agents cannot change settings, manage agents, or register
 devices. Critical alerts need `alerts:critical` and the user's opt-in.
 
-OIDC (`AUTH_MODE=oidc`) is wired but unused until Auth0 (or similar) is configured.
+Production OIDC uses Auth0 with separate MCP/account audiences and explicit delegated scopes.
+The account portal handles browser login, pairing and revocation.
 
 ## MCP
 

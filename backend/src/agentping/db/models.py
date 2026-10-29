@@ -69,8 +69,11 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    email: Mapped[str | None] = mapped_column(String(320), unique=True)
+    email: Mapped[str | None] = mapped_column(String(320))
     oidc_subject: Mapped[str | None] = mapped_column(String(255), unique=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="active", server_default="active"
+    )
     display_name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC")
     timezone_source: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
@@ -84,7 +87,49 @@ class User(Base):
 
     __table_args__ = (
         CheckConstraint("timezone_source IN ('manual', 'primary_device')", name="tz_source_valid"),
+        CheckConstraint("status IN ('active', 'suspended', 'deleted')", name="status_valid"),
     )
+
+
+class UserIdentity(Base):
+    __tablename__ = "user_identities"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    issuer: Mapped[str] = mapped_column(String(512), nullable=False)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = _created()
+
+    __table_args__ = (
+        UniqueConstraint("issuer", "subject", name="uq_user_identities_issuer_subject"),
+    )
+
+
+class PortalLogin(Base):
+    __tablename__ = "portal_logins"
+
+    state_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    browser_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    encrypted_data: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(TZ, nullable=False, index=True)
+
+
+class PortalSession(Base):
+    __tablename__ = "portal_sessions"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    encrypted_data: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(TZ, nullable=False, index=True)
+    created_at: Mapped[datetime] = _created()
+
+
+class UserQuota(Base):
+    __tablename__ = "user_quotas"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    window_start: Mapped[datetime] = mapped_column(TZ, primary_key=True, index=True)
+    requests: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
 class AgentClient(Base):
@@ -101,6 +146,9 @@ class AgentClient(Base):
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    oauth_not_before: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = _updated()
     revoked_at: Mapped[datetime | None] = mapped_column(TZ)

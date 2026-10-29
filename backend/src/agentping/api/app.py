@@ -16,11 +16,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from agentping import __version__
 from agentping.api.errors import http_error, install_error_handlers
 from agentping.api.middleware import RequestContextMiddleware
-from agentping.api.routes import account, devices, reminders, system
+from agentping.api.routes import account, devices, portal, reminders, system
 from agentping.auth.oidc import OidcVerifier
+from agentping.auth.principal import DEFAULT_AGENT_SCOPES
 from agentping.auth.service import Authenticator
 from agentping.bootstrap import build_runtime, listen_url
-from agentping.config import AppEnv, AuthMode, Settings, get_settings
+from agentping.config import AppEnv, AuthMode, ServiceMode, Settings, get_settings
 from agentping.mcp.server import build_mcp_server, transport_security
 from agentping.push.base import close_push
 from agentping.services.runtime import Runtime
@@ -43,21 +44,26 @@ def create_app(
     settings = runtime.settings
     oidc = OidcVerifier(settings) if settings.auth_mode is AuthMode.OIDC else None
     authenticator = Authenticator(runtime, oidc)
-    mcp = build_mcp_server(runtime, authenticator)
-    mcp_app = mcp.streamable_http_app(
-        streamable_http_path="/mcp",
-        stateless_http=True,
-        json_response=True,
-        transport_security=transport_security(runtime),
-        max_request_body_size=settings.max_request_bytes,
-    )
-    mcp_app.add_exception_handler(StarletteHTTPException, http_error)  # type: ignore[arg-type]
+    mcp = None
+    mcp_app = None
+    if settings.service_mode is not ServiceMode.WORKER:
+        mcp = build_mcp_server(runtime, authenticator)
+        mcp_app = mcp.streamable_http_app(
+            streamable_http_path="/mcp",
+            stateless_http=True,
+            json_response=True,
+            transport_security=transport_security(runtime),
+            max_request_body_size=settings.max_request_bytes,
+        )
+        mcp_app.add_exception_handler(StarletteHTTPException, http_error)  # type: ignore[arg-type]
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         stop = asyncio.Event()
         worker_task: asyncio.Task[None] | None = None
-        async with mcp.session_manager.run():
+        async with contextlib.AsyncExitStack() as stack:
+            if mcp is not None:
+                await stack.enter_async_context(mcp.session_manager.run())
             if settings.embedded_worker:
                 worker = Worker(runtime)
                 worker_task = asyncio.create_task(
@@ -78,6 +84,8 @@ def create_app(
         if engine is not None:
             await engine.dispose()
         await close_push(runtime.push)
+        if oidc is not None:
+            await oidc.aclose()
 
     production = settings.app_env is AppEnv.PRODUCTION
     app = FastAPI(
@@ -95,8 +103,26 @@ def create_app(
 
     install_error_handlers(app)
     app.include_router(system.router)
-    for router in (reminders.router, devices.router, account.router):
-        app.include_router(router, prefix=API_PREFIX)
+    if settings.service_mode is not ServiceMode.API:
+        app.include_router(system.worker_router)
+    if settings.service_mode is not ServiceMode.WORKER:
+        app.include_router(system.user_router)
+        for router in (reminders.router, devices.router, account.router):
+            app.include_router(router, prefix=API_PREFIX)
+        if settings.portal_client_id:
+            app.include_router(portal.router)
+        if settings.auth_mode is AuthMode.OIDC:
+
+            @app.get("/.well-known/oauth-protected-resource/mcp", include_in_schema=False)
+            @app.get("/.well-known/oauth-protected-resource", include_in_schema=False)
+            async def protected_resource() -> dict[str, object]:
+                return {
+                    "resource": settings.mcp_resource_url,
+                    "authorization_servers": [settings.oidc_issuer],
+                    "bearer_methods_supported": ["header"],
+                    "scopes_supported": sorted(DEFAULT_AGENT_SCOPES),
+                    "resource_name": "AgentPing",
+                }
 
     if settings.cors_allowed_origins:
         app.add_middleware(
@@ -112,5 +138,6 @@ def create_app(
         require_https=production,
         application_token_header=settings.application_token_header,
     )
-    app.mount("/", mcp_app)
+    if mcp_app is not None:
+        app.mount("/", mcp_app)
     return app

@@ -92,3 +92,17 @@ async def test_trigger_fails_for_retry_if_next_wakeup_cannot_be_enqueued(client,
         await client.post(
             "/internal/worker/run", headers={"X-Worker-Token": "trigger-secret-0123456789"}
         )
+
+
+async def test_changing_worker_target_does_not_reuse_old_task_tombstone(
+    client, harness, monkeypatch
+) -> None:
+    await create_once(client, minutes=120)
+    wakeup = CloudTasksWakeup(harness.runtime)
+    enqueue = AsyncMock()
+    monkeypatch.setattr(wakeup, "_enqueue", enqueue)
+    await wakeup.notify()
+    old_id = enqueue.call_args.args[0]
+    harness.runtime.settings.worker_base_url = "https://private-worker.example"
+    await wakeup.notify()
+    assert enqueue.call_args.args[0] != old_id

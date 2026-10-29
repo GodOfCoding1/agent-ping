@@ -13,10 +13,11 @@ from pydantic import BaseModel
 from sqlalchemy import func, select, text
 
 from agentping import __version__
-from agentping.api.deps import get_principal, get_runtime
+from agentping.api.deps import get_principal, get_runtime, optional_principal
 from agentping.api.errors import ERROR_RESPONSES, error_response
 from agentping.auth import tokens
 from agentping.auth.principal import Principal, Scope
+from agentping.config import ServiceMode
 from agentping.db.models import Device, OutboxJob, WorkerHeartbeat
 from agentping.domain.enums import DeviceStatus
 from agentping.services.runtime import Runtime
@@ -24,6 +25,8 @@ from agentping.services.targeting import device_health
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+worker_router = APIRouter()
+user_router = APIRouter()
 
 
 @router.get("/health", tags=["system"], summary="Liveness (does not touch the database)")
@@ -32,13 +35,18 @@ async def healthz() -> dict[str, str]:
     return {"status": "ok", "version": __version__}
 
 
-@router.get(
+@user_router.get(
     "/readyz",
     tags=["system"],
     summary="Readiness: database reachable and schema migrated",
     responses={503: {"description": "Not ready"}},
 )
-async def readyz(runtime: Annotated[Runtime, Depends(get_runtime)]) -> JSONResponse:
+async def readyz(
+    runtime: Annotated[Runtime, Depends(get_runtime)],
+    principal: Annotated[Principal | None, Depends(optional_principal)],
+) -> JSONResponse:
+    if runtime.settings.service_mode is ServiceMode.API and principal is None:
+        return error_response(401, "unauthenticated", "Readiness requires authentication")
     try:
         async with runtime.session_factory() as session:
             revision = (
@@ -62,7 +70,7 @@ class Diagnostics(BaseModel):
     devices: list[dict[str, Any]]
 
 
-@router.get(
+@user_router.get(
     "/api/v1/diagnostics",
     response_model=Diagnostics,
     tags=["system"],
@@ -90,7 +98,10 @@ async def diagnostics(
             (
                 await session.execute(
                     select(OutboxJob.status, func.count())
-                    .where(OutboxJob.status.in_(["pending", "running", "dead"]))
+                    .where(
+                        OutboxJob.user_id == principal.user_id,
+                        OutboxJob.status.in_(["pending", "running", "dead"]),
+                    )
                     .group_by(OutboxJob.status)
                 )
             ).all()
@@ -98,7 +109,9 @@ async def diagnostics(
         overdue = (
             await session.execute(
                 select(func.count(), func.min(OutboxJob.run_at)).where(
-                    OutboxJob.status == "pending", OutboxJob.run_at <= now - timedelta(minutes=1)
+                    OutboxJob.user_id == principal.user_id,
+                    OutboxJob.status == "pending",
+                    OutboxJob.run_at <= now - timedelta(minutes=1),
                 )
             )
         ).one()
@@ -153,7 +166,7 @@ class WorkerRunResult(BaseModel):
     next_run_in_seconds: float
 
 
-@router.post(
+@worker_router.post(
     "/internal/worker/run",
     response_model=WorkerRunResult,
     tags=["system"],

@@ -31,6 +31,12 @@ class PushProvider(StrEnum):
     DISABLED = "disabled"
 
 
+class ServiceMode(StrEnum):
+    LOCAL = "local"
+    API = "api"
+    WORKER = "worker"
+
+
 StrList = Annotated[list[str], NoDecode]
 LOCAL_DATABASE_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "db", "postgres"})
 NEON_CONTEXT_PATH = Path(__file__).resolve().parents[3] / ".agentping" / "neon-context.json"
@@ -42,6 +48,7 @@ class Settings(BaseSettings):
     app_env: AppEnv = AppEnv.DEVELOPMENT
     log_level: str = "INFO"
     log_json: bool = True
+    service_mode: ServiceMode = ServiceMode.LOCAL
 
     database_url: SecretStr = SecretStr("")
     migration_database_url: SecretStr = SecretStr("")
@@ -63,6 +70,16 @@ class Settings(BaseSettings):
     oidc_jwks_url: str = ""
     oidc_allowed_subjects: StrList = Field(default_factory=list)
     oidc_scope_claim: str = "scope"
+    oidc_api_audience: str = ""
+    oidc_user_client_ids: StrList = Field(default_factory=list)
+    oidc_signup_enabled: bool = False
+    oidc_agent_client_names: dict[str, str] = Field(default_factory=dict)
+    oidc_max_token_lifetime_seconds: int = 3600
+    portal_client_id: str = ""
+    portal_client_secret: SecretStr = SecretStr("")
+    portal_encryption_key: SecretStr = SecretStr("")
+    portal_session_days: int = 7
+    user_requests_per_minute: int = 120
     application_token_header: str = "Authorization"
 
     push_provider: PushProvider = PushProvider.LOG
@@ -95,6 +112,7 @@ class Settings(BaseSettings):
     worker_trigger_token: SecretStr = SecretStr("")
     cloud_tasks_queue: str = ""
     cloud_tasks_invoker_email: str = ""
+    worker_base_url: str = ""
     worker_listen: bool = True
     worker_listen_database_url: SecretStr = SecretStr("")
 
@@ -103,6 +121,7 @@ class Settings(BaseSettings):
         "mcp_allowed_origins",
         "cors_allowed_origins",
         "oidc_allowed_subjects",
+        "oidc_user_client_ids",
         mode="before",
     )
     @classmethod
@@ -131,6 +150,42 @@ class Settings(BaseSettings):
             raise ValueError(
                 "Cloud Tasks and the continuous embedded worker are mutually exclusive"
             )
+        if self.service_mode is not ServiceMode.LOCAL and self.embedded_worker:
+            raise ValueError("Hosted services require request-driven work")
+        if self.auth_mode is AuthMode.OIDC and self.is_production:
+            if not self.oidc_issuer.startswith("https://"):
+                raise ValueError("Production OIDC issuer requires HTTPS")
+            if self.oidc_jwks_url and not self.oidc_jwks_url.startswith("https://"):
+                raise ValueError("Production signing keys require HTTPS")
+        if self.service_mode is ServiceMode.API:
+            if (
+                self.auth_mode is not AuthMode.OIDC
+                or self.application_token_header.lower() != "authorization"
+            ):
+                raise ValueError("Public API mode requires OIDC and standard Authorization")
+            if not self.oidc_signup_enabled or not self.oidc_api_audience:
+                raise ValueError(
+                    "Public API mode requires explicit signup and API audience configuration"
+                )
+            if self.cloud_tasks_queue and not self.worker_base_url.startswith("https://"):
+                raise ValueError("Public API tasks require a separate HTTPS worker URL")
+        if self.portal_client_id:
+            if self.portal_client_id not in self.oidc_user_client_ids:
+                raise ValueError(
+                    "Portal client must be explicitly trusted as a first-party user client"
+                )
+            if (
+                not self.portal_client_secret.get_secret_value()
+                or not self.portal_encryption_key.get_secret_value()
+            ):
+                raise ValueError("Portal requires a client secret and session encryption key")
+        if self.portal_client_id:
+            from cryptography.fernet import Fernet
+
+            try:
+                Fernet(self.portal_encryption_key.get_secret_value().encode())
+            except (ValueError, TypeError) as error:
+                raise ValueError("Portal session encryption key is invalid") from error
         return self
 
     @property

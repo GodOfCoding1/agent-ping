@@ -13,11 +13,12 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from sqlalchemy import select, text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agentping.auth.principal import Principal
 from agentping.config import Settings
-from agentping.db.models import User
+from agentping.db.models import User, UserQuota
 from agentping.domain.enums import ActionSource, ActorKind
 from agentping.domain.errors import NotFound, RateLimited
 from agentping.push.base import PushSender
@@ -117,6 +118,28 @@ class Runtime:
                 now=self.clock.now(),
             )
             async with session.begin():
+                if rate_limit and principal.actor_kind is not ActorKind.SYSTEM:
+                    # Durable per-user bound, shared by REST, MCP, browser sessions and
+                    # all API instances. Token/client rotation cannot reset the quota.
+                    window = ctx.now.replace(second=0, microsecond=0)
+                    statement = insert(UserQuota).values(
+                        user_id=principal.user_id, window_start=window, requests=1
+                    )
+                    used = (
+                        await session.execute(
+                            statement.on_conflict_do_update(
+                                index_elements=[UserQuota.user_id, UserQuota.window_start],
+                                set_={"requests": UserQuota.requests + 1},
+                            ).returning(UserQuota.requests)
+                        )
+                    ).scalar_one()
+                    if used > self.settings.user_requests_per_minute:
+                        raise RateLimited(
+                            "Account request limit reached",
+                            details={
+                                "retry_after_seconds": 60 - ctx.now.second,
+                            },
+                        )
                 yield ctx
             if ctx.enqueued_work:
                 self.signal.notify()

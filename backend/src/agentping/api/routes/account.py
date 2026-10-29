@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, Response, status
+from pydantic import BaseModel
 
 from agentping.api.deps import Call
 from agentping.api.errors import ERROR_RESPONSES
+from agentping.db.models import User
 from agentping.domain.schemas import (
     ActivityEvent,
     AgentCreate,
@@ -20,7 +22,7 @@ from agentping.domain.schemas import (
     SettingsUpdate,
     SettingsView,
 )
-from agentping.services import activity, agents, settings
+from agentping.services import accounts, activity, agents, settings
 
 router = APIRouter(responses=ERROR_RESPONSES)
 
@@ -111,3 +113,34 @@ async def issue_agent_token(
 async def revoke_agent_token(token_id: uuid.UUID, call: Call) -> Response:
     await call(agents.revoke_token, token_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/me", tags=["account"])
+async def get_profile(call: Call) -> dict[str, str | None]:
+    from agentping.auth.principal import Scope
+
+    call.principal.require(Scope.SETTINGS_WRITE)
+    async with call.runtime.unit(call.principal) as ctx:
+        user = await ctx.session.get(User, ctx.user_id)
+        assert user is not None
+        return {
+            "id": str(user.id),
+            "display_name": user.display_name,
+            "email": user.email,
+            "status": user.status,
+        }
+
+
+class AccountClosure(BaseModel):
+    confirmation: Literal["CLOSE"]
+
+
+@router.post("/me/close", status_code=204, tags=["account"])
+async def close_account(body: AccountClosure, call: Call) -> Response:
+    await call(accounts.close_account)
+    return Response(status_code=204)
+
+
+@router.post("/agents/{agent_id}/reauthorize", response_model=AgentView, tags=["agents"])
+async def reauthorize_agent(agent_id: uuid.UUID, call: Call) -> AgentView:
+    return await call(agents.reauthorize_agent, agent_id)

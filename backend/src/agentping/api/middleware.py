@@ -106,12 +106,14 @@ class RequestContextMiddleware:
                     extra = [
                         (b"x-request-id", request_id.encode()),
                         (b"x-content-type-options", b"nosniff"),
-                        (b"referrer-policy", b"no-referrer"),
                         (b"cache-control", b"no-store"),
                     ]
+                    response_headers = list(message.get("headers", []))
+                    if not any(k.lower() == b"referrer-policy" for k, _ in response_headers):
+                        extra.append((b"referrer-policy", b"no-referrer"))
                     if self.require_https:
                         extra.append((b"strict-transport-security", b"max-age=31536000"))
-                    message["headers"] = list(message.get("headers", [])) + extra
+                    message["headers"] = response_headers + extra
                 await send(message)
 
             try:

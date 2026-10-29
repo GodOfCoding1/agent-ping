@@ -50,14 +50,19 @@ class CloudTasksWakeup:
         run_at = max(now + timedelta(seconds=1), min(row.due, now + timedelta(days=28)))
         # Deduplicate concurrent transactions selecting the same outbox job. An hourly
         # time bucket allows recovery to recreate a wake-up after a task's tombstone.
-        key = f"{row.id}:{row.attempts}:{row.due.isoformat()}:{int(now.timestamp()) // 3600}"
+        target = (
+            self.runtime.settings.worker_base_url or self.runtime.settings.public_base_url
+        ).rstrip("/")
+        key = (
+            f"{target}:{row.id}:{row.attempts}:{row.due.isoformat()}:{int(now.timestamp()) // 3600}"
+        )
         task_id = hashlib.sha256(key.encode()).hexdigest()
         await self._enqueue(task_id, run_at)
 
     async def _enqueue(self, task_id: str, run_at: datetime) -> None:
         settings = self.runtime.settings
         queue = settings.cloud_tasks_queue
-        origin = settings.public_base_url.rstrip("/")
+        origin = (settings.worker_base_url or settings.public_base_url).rstrip("/")
         payload: dict[str, Any] = {
             "task": {
                 "name": f"{queue}/tasks/{task_id}",

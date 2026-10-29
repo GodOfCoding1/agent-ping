@@ -19,10 +19,13 @@ from agentping.db.models import (
     DevicePairingCode,
     IdempotencyRecord,
     OutboxJob,
+    PortalLogin,
+    PortalSession,
     Reminder,
     ReminderOccurrence,
     SyncChange,
     User,
+    UserQuota,
 )
 from agentping.domain.enums import (
     DeliveryMode,
@@ -589,6 +592,11 @@ async def handle_maintenance(ctx: ServiceContext, job: Job) -> None:
             if reminder is not None:
                 extended += await occ.materialize(user_ctx, reminder, user)
         ctx.enqueued_work |= user_ctx.enqueued_work
+    await ctx.session.execute(delete(PortalLogin).where(PortalLogin.expires_at < now))
+    await ctx.session.execute(delete(PortalSession).where(PortalSession.expires_at < now))
+    await ctx.session.execute(
+        delete(UserQuota).where(UserQuota.window_start < now - timedelta(days=2))
+    )
     retention = now - timedelta(days=settings.sync_change_retention_days)
     await ctx.session.execute(delete(SyncChange).where(SyncChange.created_at < retention))
     await ctx.session.execute(delete(IdempotencyRecord).where(IdempotencyRecord.expires_at < now))

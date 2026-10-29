@@ -1,4 +1,16 @@
+> Production OAuth is now implemented and undergoing live browser acceptance.
+> Use [production OAuth operations](production-oauth-operations.md) for the Auth0
+> client, native Codex configuration and current release status. Google CLI helper
+> and private-IAM instructions below describe the earlier bootstrap only.
+
 # MCP
+
+For the **public multi-user Codex connection**, use
+[production-oauth-operations.md](production-oauth-operations.md). Production uses
+Auth0 browser OAuth with PKCE and standard bearer access tokens. Customer access
+requires no Google Cloud role or IAM helper. The worker remains IAM-private.
+The token examples below also support local development and explicitly issued
+scoped agent credentials.
 
 AgentPing exposes tools over the [official MCP Python SDK](https://py.sdk.modelcontextprotocol.io/)
 using Streamable HTTP at `/mcp` (`stateless_http`, JSON responses). DNS-rebinding
@@ -7,7 +19,7 @@ protection is always on. Allowed hosts/origins come from `MCP_ALLOWED_HOSTS` /
 
 Unauthenticated calls return 401 with `WWW-Authenticate` pointing at
 `/.well-known/oauth-protected-resource/mcp`. Development auth is a bearer token
-(owner or agent), not OAuth yet.
+(owner or agent); production uses the managed OAuth flow.
 
 ## Tools
 
