@@ -66,6 +66,22 @@ def advance_delivery(delivery: DeviceDelivery, state: DeliveryState) -> None:
         delivery.state = state.value
 
 
+def reset_delivery_version(delivery: DeviceDelivery, version: int) -> None:
+    """Current delivery evidence must never describe an older snoozed revision."""
+    if (delivery.occurrence_version or 0) >= version:
+        return
+    delivery.occurrence_version = version
+    delivery.displayed_at = None
+    delivery.scheduled_locally_at = None
+    delivery.dismissed_at = None
+    delivery.device_received_at = None
+    delivery.provider_accepted_at = None
+    delivery.failed_at = None
+    delivery.failure_code = None
+    delivery.failure_detail = None
+    delivery.state = DeliveryState.PENDING.value
+
+
 async def create_pairing_code(ctx: ServiceContext) -> PairingCodeCreated:
     ctx.principal.require(Scope.DEVICES_MANAGE)
     code = tokens.generate_pairing_code()
@@ -487,7 +503,23 @@ async def record_receipts(ctx: ServiceContext, batch: DeviceReceiptBatch) -> Rec
     }
     for receipt in batch.receipts:
         occurrence = occurrences.get(receipt.occurrence_id)
-        if occurrence is None:
+        if occurrence is None or receipt.occurrence_version != occurrence.version:
+            # A delayed old receipt must not clear a newer local schedule or mark
+            # a snoozed/cancelled occurrence displayed.
+            ignored += 1
+            continue
+        if receipt.kind in (ReceiptKind.SCHEDULED, ReceiptKind.DISPLAYED) and (
+            occurrence.state
+            not in {
+                OccurrenceState.SCHEDULED.value,
+                OccurrenceState.SNOOZED.value,
+                OccurrenceState.FIRED.value,
+            }
+            or (
+                receipt.kind is ReceiptKind.DISPLAYED
+                and occurrence.scheduled_at > ctx.now + timedelta(seconds=90)
+            )
+        ):
             ignored += 1
             continue
         at = receipt.at if receipt.at.tzinfo else receipt.at.replace(tzinfo=ctx.now.tzinfo)
@@ -503,6 +535,7 @@ async def record_receipts(ctx: ServiceContext, batch: DeviceReceiptBatch) -> Rec
             )
             ctx.session.add(delivery)
             deliveries[occurrence.id] = delivery
+        reset_delivery_version(delivery, receipt.occurrence_version)
         kind = receipt.kind
         if kind is ReceiptKind.RECEIVED:
             delivery.device_received_at = delivery.device_received_at or at

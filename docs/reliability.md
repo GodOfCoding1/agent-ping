@@ -50,3 +50,27 @@ field when `push_token_kind=registration_token`.
 `audit_events` is append-only via a trigger. Runtime cannot UPDATE/DELETE rows
 or CREATE TABLE. Purging requires `SET agentping.allow_audit_purge='on'` **and**
 membership of the table-owner role (`agentping_migrator`).
+
+## Android replica and offline actions
+
+Room stores server entity snapshots, the sync cursor, pending actions/receipts and
+unique event claims. Each sync page commits all entities and its cursor in one
+transaction. A full snapshot replaces the replica while retaining pending local
+action overlays. Offline actions persist a UUID idempotency key and local state
+in the same transaction; replay uses `/sync/actions` before downloading changes.
+Rejected/stale actions resolve to canonical server state and remain in local activity.
+Retries use network-constrained WorkManager with exponential backoff; background
+reconciliation runs every six hours, and app open/push hints request immediate sync.
+Device or settings changes force a server full snapshot to recalculate targets.
+These are local development flows; no polling or hosting changes are introduced.
+
+New sync signals replace a backed-off pending one-shot WorkManager request so a
+new FCM event does not wait behind a long offline retry chain. Durable action IDs
+and receipt records make cancellation/replay safe. An event claimed before a
+process crash can resume; an already-posted notification with the same event
+identity is recognized before retrying. Alarm ringing shares the foreground
+notification ID, preventing a second mirrored phone/watch notification.
+
+Current device targets and critical opt-in are checked again when a push retry
+actually dispatches. A queued job does not retain authority to alert a former
+primary or ignore a later user opt-out.

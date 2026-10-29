@@ -80,3 +80,12 @@ Register with `push_token` (Firebase Installation ID) and `push_token_kind`
 | DELETE | `/agents/tokens/{token_id}` | 204 |
 
 Agents cannot call settings, agent-management or pairing endpoints (403).
+
+## Android receipt/retry semantics
+
+Receipt versions must match the current occurrence. Early or terminal displayed
+claims are ignored, and old unscheduled/displayed receipts cannot clear a newer
+snooze. Per-device delivery evidence resets for a newer occurrence version, while
+history remains in audit events. Provider retries re-evaluate current device
+selection and critical opt-in before dispatch. Device/settings changes can return
+a full sync snapshot even with a supplied cursor, so clients must honor `full`.

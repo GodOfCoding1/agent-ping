@@ -65,3 +65,19 @@ Example Cursor MCP config (token via file, not inlined):
   }
 }
 ```
+
+## Local Android end-to-end probe
+
+After pairing a phone through the Android app, use its device UUID:
+
+```sh
+./dev android-mcp-check --device-id <UUID>
+./dev android-mcp-check --device-id <UUID> --alarm-seconds 300
+```
+
+The probe uses the official MCP client over the existing local Streamable HTTP
+endpoint, creates/revokes a temporary scoped agent, sends once and replays the
+same idempotency key. Its output separates MCP acceptance, provider acceptance,
+local scheduling, device receipt and notification posting. It leaves the test
+alert for interaction; cancel it through the app after verification. Exit 0
+alone does not prove device delivery. No public endpoint or hosting is provisioned.

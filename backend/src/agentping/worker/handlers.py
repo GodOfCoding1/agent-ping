@@ -44,7 +44,7 @@ from agentping.push.base import PushMessage, PushResult
 from agentping.push.payloads import deliver_payload, dismiss_payload, sync_payload
 from agentping.services import occurrences as occ
 from agentping.services.core import audit, enqueue, record_changes
-from agentping.services.devices import advance_delivery
+from agentping.services.devices import advance_delivery, reset_delivery_version
 from agentping.services.runtime import ServiceContext, system_principal
 from agentping.services.targeting import active_devices, explicit_targets, reminder_resolution
 from agentping.services.views import preferences_of
@@ -124,6 +124,7 @@ async def _delivery(
         )
         ctx.session.add(delivery)
         await ctx.session.flush()
+    reset_delivery_version(delivery, occurrence.version)
     return delivery
 
 
@@ -134,6 +135,7 @@ def _locally_scheduled(delivery: DeviceDelivery, occurrence: ReminderOccurrence)
             and (delivery.occurrence_version or 0) >= occurrence.version
         )
         or delivery.displayed_at is not None
+        and delivery.occurrence_version == occurrence.version
         and occurrence.state == S.FIRED.value
     )
 
@@ -145,7 +147,13 @@ async def _push_to_targets(
     *,
     step: int,
     silent: bool,
+    allow_late: bool = False,
 ) -> int:
+    if (
+        reminder.mode == DeliveryMode.CRITICAL.value
+        and not preferences_of(await ctx.user()).critical_alerts_enabled
+    ):
+        return 0
     queued = 0
     stamp = int(occurrence.scheduled_at.timestamp())
     for device in await _targets(ctx, reminder):
@@ -164,6 +172,7 @@ async def _push_to_targets(
                 "scheduled_at": occurrence.scheduled_at.isoformat(),
                 "step": step,
                 "silent": silent,
+                "allow_late": allow_late,
             },
             dedupe_key=f"push:{occurrence.id}:{device.id}:{stamp}:{step}",
         )
@@ -200,7 +209,10 @@ async def handle_due(ctx: ServiceContext, job: Job) -> None:
         dedupe_key=f"expire:{occurrence.id}:{stamp}",
     )
     late_by = ctx.now - occurrence.scheduled_at
-    if late_by > timedelta(seconds=reminder.late_grace_seconds) or occurrence.expires_at <= ctx.now:
+    if (
+        late_by > timedelta(seconds=reminder.late_grace_seconds)
+        and not job.payload.get("quiet_deferred")
+    ) or occurrence.expires_at <= ctx.now:
         _mark_fired(ctx, occurrence)
         await audit(
             ctx,
@@ -221,14 +233,21 @@ async def handle_due(ctx: ServiceContext, job: Job) -> None:
                 await enqueue(
                     ctx,
                     "occurrence.due",
-                    job.payload,
+                    {**job.payload, "quiet_deferred": True},
                     run_at=quiet_end,
                     dedupe_key=f"due:{occurrence.id}:{int(occurrence.scheduled_at.timestamp())}:q",
                 )
                 return
             silent = True
     _mark_fired(ctx, occurrence)
-    await _push_to_targets(ctx, occurrence, reminder, step=0, silent=silent)
+    await _push_to_targets(
+        ctx,
+        occurrence,
+        reminder,
+        step=0,
+        silent=silent,
+        allow_late=bool(job.payload.get("quiet_deferred")),
+    )
     policy = EscalationPolicy.model_validate(reminder.escalation_policy or {"enabled": False})
     if reminder.requires_ack and policy.enabled and policy.max_repeats > 0:
         await enqueue(
@@ -385,6 +404,15 @@ async def handle_push_deliver(ctx: ServiceContext, job: Job) -> None:
     user = await ctx.session.get(User, occurrence.user_id)
     if reminder is None or user is None:
         return
+    # Retry jobs can outlive a primary/mode preference or critical opt-in change.
+    # Re-authorize the target at dispatch time rather than reusing old selection.
+    if (
+        reminder.mode == DeliveryMode.CRITICAL.value
+        and not preferences_of(user).critical_alerts_enabled
+    ):
+        return
+    if device.id not in {target.id for target in await _targets(ctx, reminder)}:
+        return
     if occurrence.state not in (S.SCHEDULED.value, S.SNOOZED.value, S.FIRED.value):
         return
     if not _same_instant(payload["scheduled_at"], occurrence.scheduled_at):
@@ -398,6 +426,8 @@ async def handle_push_deliver(ctx: ServiceContext, job: Job) -> None:
         occurrence.expires_at,
         occurrence.scheduled_at + timedelta(seconds=max(reminder.late_grace_seconds, 60)),
     )
+    if payload.get("allow_late"):
+        deadline = occurrence.expires_at
     ttl = int((deadline - ctx.now).total_seconds())
     if ttl <= 0:
         delivery.failure_code = "expired_before_push"

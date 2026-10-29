@@ -71,3 +71,12 @@ Gcloud now runs in `~/.config/gcloud/virtenv`; no global pip or sudo pip was use
 
 The initial Android build baseline is AGP 9.2.x / Gradle wrapper 9.4.1 / JDK 21 /
 API 36. Revalidate stable Kotlin/Compose/KSP versions when the Android app is built.
+
+## Android project update — 2026-10-29
+
+The development shell is initialized under `android/`, with AGP 9.2.0, Gradle
+wrapper 9.4.1 (distribution checksum), Kotlin/Compose compiler 2.3.20, API 36 and
+Build Tools 36.0.0. It reuses the existing JDK 21 and SDK. The official Android CLI
+skill and knowledge-base cache are installed. See `android/README.md` for commands
+and `verification.md` for actual build/device results. Room/KSP and other feature
+libraries are deliberately added when their first feature is implemented.

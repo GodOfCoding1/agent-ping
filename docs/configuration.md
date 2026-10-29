@@ -59,7 +59,7 @@ so the server's `pg_stat_ssl` is not evidence of the client-to-proxy connection.
 
 Ignored Android Firebase configs are under `android/config/firebase/{debug,release}`.
 These contain public app/project identifiers and a client API key, not backend
-credentials. They are expected in the future APK, but are kept out of this repo
+credentials. They are expected in the debug APK, but are kept out of this repo
 to avoid accidental environment mix-ups. Never put database credentials, the local
 development token or service-account material into Android resources.
 
@@ -90,3 +90,14 @@ The root `.dockerignore` also excludes credentials, environment files, private
 diagnostics, virtual environments, Android configuration and generated output
 from future root-context container builds. Preserve these protections when adding
 the real backend Dockerfile and any alternative build contexts.
+
+
+## Android runtime credentials and preferences
+
+The build never reads backend environment files. Pairing exchanges a short-lived
+code for a device credential encrypted by a non-exportable Android Keystore key.
+Backup is disabled. Firebase FID is captured only after registration; no owner,
+agent, database or ADC credential enters the app. Room holds the local replica,
+cursor and durable action/receipt queue; DataStore holds theme/onboarding settings.
+Server user preferences remain canonical and are replicated into Room. Re-pairing
+uses an unauthenticated code exchange even if the old device token has expired.

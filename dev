@@ -59,11 +59,55 @@ case "$CMD" in
   fcm-check)
     run_uv agentping-admin fcm-check "$@"
     ;;
+  android-mcp-check)
+    run_uv python "$ROOT/infra/android_mcp_smoke.py" "$@"
+    ;;
   stack-smoke)
     run_uv python "$ROOT/infra/stack_smoke.py"
     ;;
   mcp-stdio)
     run_uv agentping-mcp-stdio
+    ;;
+  android-setup)
+    exec python3 "$ROOT/infra/android_env.py" "$@"
+    ;;
+  android-gradle)
+    cd "$ROOT/android"
+    exec ./gradlew "$@"
+    ;;
+  android-check)
+    cd "$ROOT/android"
+    exec ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --console=plain "$@"
+    ;;
+  android-emulator)
+    exec android emulator start "${1:-AgentPing_API36}"
+    ;;
+  android-device|android-run|android-test)
+    if [ "$#" -lt 1 ]; then
+      echo "Usage: ./dev $CMD <adb-serial> [Gradle arguments]" >&2
+      exit 2
+    fi
+    SERIAL=$1
+    shift
+    if [ "$(adb -s "$SERIAL" get-state 2>/dev/null || true)" != device ]; then
+      echo "Device is unavailable or unauthorized; check adb devices -l and approve USB debugging." >&2
+      exit 1
+    fi
+    adb -s "$SERIAL" reverse tcp:8000 tcp:8000
+    case "$CMD" in
+      android-device)
+        echo "Device ready: $SERIAL; backend at http://127.0.0.1:8000/ through USB/emulator reverse"
+        ;;
+      android-run)
+        cd "$ROOT/android"
+        ./gradlew :app:assembleDebug --console=plain "$@"
+        exec android run --device="$SERIAL" --apks="$ROOT/android/app/build/outputs/apk/debug/app-debug.apk"
+        ;;
+      android-test)
+        cd "$ROOT/android"
+        ANDROID_SERIAL="$SERIAL" ./gradlew :app:connectedDebugAndroidTest --console=plain "$@"
+        ;;
+    esac
     ;;
   *)
     cat <<EOF
@@ -73,6 +117,8 @@ Setup probes:     doctor | imports | db-check | firebase-check | inspector
 Local stack:      compose-env | compose [...] | test-db | stack-smoke
 Application:      api | worker | migrate [...] | admin [...] | fcm-check | mcp-stdio
 Quality:          test | lint
+Android:          android-setup | android-check | android-gradle [...] | android-emulator [AVD]
+Device (serial):  android-device | android-run | android-test
 EOF
     exit 2
     ;;

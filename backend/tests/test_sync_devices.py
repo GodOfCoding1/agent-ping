@@ -416,3 +416,20 @@ async def test_floating_reminder_follows_timezone_change(client) -> None:
     ).json()["items"]
     assert after[0]["scheduled_at"] == "2026-03-03T08:00:00Z"
     assert after[0]["local_wall"].startswith("2026-03-03T08:00")
+
+
+async def test_primary_switch_resynchronizes_existing_local_alarm_targets(client) -> None:
+    phone = await register_device(client, installation_id="phone-primary")
+    tablet = await register_device(client, installation_id="tablet-secondary")
+    created = await create_once(client, minutes=30, mode="alarm")
+    token = auth(phone["device_token"])
+    initial = (await client.get("/api/v1/sync", headers=token)).json()
+    assert initial["occurrences"][0]["deliver_on_this_device"] is True
+    await client.patch(f"/api/v1/devices/{tablet['device']['id']}", json={"is_primary": True})
+    delta = (
+        await client.get("/api/v1/sync", params={"cursor": initial["cursor"]}, headers=token)
+    ).json()
+    assert delta["full"] is True
+    [occurrence] = [o for o in delta["occurrences"] if o["id"] == created["next_occurrence"]["id"]]
+    assert occurrence["deliver_on_this_device"] is False
+    assert delta["reminders"][0]["targets"]["resolved_device_ids"] == [tablet["device"]["id"]]

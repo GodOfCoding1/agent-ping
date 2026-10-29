@@ -3,7 +3,8 @@
 MCP-controlled notifications, reminders and alarms for the user's Android phones.
 
 The **backend** (FastAPI, Streamable HTTP MCP, PostgreSQL outbox worker, FCM) is
-implemented and runs locally. The **Android app is not implemented**. Production
+implemented and runs locally. The **Android app** implements pairing, Firebase
+notifications, offline sync/actions, local alarms and Material 3 reminder management. See [Android development](android/README.md). Production
 hosting is not deployed; Auth0/OIDC is deferred and required before public exposure.
 Budget for any future hosting: INR 500/month or less.
 
@@ -13,6 +14,7 @@ Budget for any future hosting: INR 500/month or less.
 - [Reliability / outbox](docs/reliability.md)
 - [Infrastructure](docs/infrastructure.md)
 - [Testing](docs/testing.md)
+- [Android manual verification matrix](docs/android-manual-tests.md)
 - Setup inventory: [environment](docs/environment.md), [configuration](docs/configuration.md),
   [Google Cloud](docs/google-cloud.md), [verification](docs/verification.md)
 
@@ -68,6 +70,20 @@ uv run --project backend --locked ruff check --config backend/pyproject.toml bac
 uv run --project backend --locked mypy --config-file backend/pyproject.toml backend/src backend/tests
 ```
 
+## Android development
+
+```sh
+./dev android-setup
+./dev android-check
+./dev android-emulator
+adb devices -l
+./dev android-run <serial>
+./dev android-test <serial>
+```
+
+See [android/README.md](android/README.md) for Firebase configuration, backend
+connectivity, physical phones, reports and the exact verified scope.
+
 ## Authentication (development)
 
 `AUTH_MODE=development` accepts `DEV_AUTH_TOKEN` as the account owner. Create
@@ -82,8 +98,7 @@ OIDC (`AUTH_MODE=oidc`) is wired but unused until Auth0 (or similar) is configur
 Streamable HTTP at `/mcp` (JSON responses, DNS-rebinding protection). Clients that
 only speak stdio should launch `agentping-mcp-stdio`. See [docs/mcp.md](docs/mcp.md).
 
-## What is not in this repository yet
+## Deferred production work
 
-- Kotlin/Compose Android app, Gradle project, APK
 - Production DNS, Cloud Run/VM deployment, Railway (excluded)
 - Managed OAuth/OIDC login

@@ -359,3 +359,122 @@ async def test_device_failure_receipt_is_audited(client, harness: Harness) -> No
     errors = (await client.get("/api/v1/activity", params={"category": "error"})).json()["items"]
     assert errors[0]["event_type"] == "delivery.device_failed"
     assert timedelta(0) <= harness.clock.now() - T0
+
+
+async def test_delayed_receipts_cannot_override_snooze_or_cancellation(
+    client, harness: Harness
+) -> None:
+    device = await register_device(client)
+    created = await create_once(client, minutes=10)
+    old = created["next_occurrence"]
+    response = await client.post(f"/api/v1/occurrences/{old['id']}/snooze", json={"minutes": 30})
+    current = response.json()["occurrence"]
+    await _receipt(client, device["device_token"], current, "scheduled")
+    for kind in ("displayed", "unscheduled", "scheduled"):
+        assert await _receipt(client, device["device_token"], old, kind) == {
+            "accepted": 0,
+            "ignored": 1,
+        }
+    detail = await _occurrence(client, old["id"])
+    assert detail["state"] == "snoozed"
+    assert detail["deliveries"][0]["state"] == "scheduled_locally"
+    assert await _receipt(client, device["device_token"], current, "displayed") == {
+        "accepted": 0,
+        "ignored": 1,
+    }
+    await client.post(f"/api/v1/reminders/{created['reminder_id']}/cancel")
+    cancelled = await _occurrence(client, old["id"])
+    assert await _receipt(client, device["device_token"], cancelled, "displayed") == {
+        "accepted": 0,
+        "ignored": 1,
+    }
+    assert (await _occurrence(client, old["id"]))["state"] == "cancelled"
+
+
+async def test_scheduled_quiet_deferral_can_deliver_after_original_late_grace(
+    client, harness: Harness
+) -> None:
+    await register_device(client, push_token="quiet-phone-registration")
+    settings = (await client.get("/api/v1/settings")).json()
+    await client.patch(
+        "/api/v1/settings",
+        json={
+            "timezone": "UTC",
+            "preferences": {
+                **settings["preferences"],
+                "quiet_hours": {
+                    "enabled": True,
+                    "start": "09:00",
+                    "end": "10:00",
+                    "behavior": "defer",
+                },
+            },
+        },
+    )
+    created = await create_once(client, minutes=5, mode="normal")
+    await harness.advance_and_run(minutes=5)
+    assert harness.push.of_type("deliver") == []
+    await harness.advance_and_run(minutes=55)
+    assert len(harness.push.of_type("deliver")) == 1
+    detail = await _occurrence(client, created["next_occurrence"]["id"])
+    assert detail["deliveries"][0]["state"] == "provider_accepted"
+
+
+async def test_old_display_receipt_does_not_suppress_new_snooze_delivery(
+    client, harness: Harness
+) -> None:
+    phone = await register_device(client, push_token="snooze-phone-registration")
+    created = await create_once(client, minutes=1, mode="alarm")
+    occurrence = created["next_occurrence"]
+    await harness.advance_and_run(minutes=1)
+    await _receipt(client, phone["device_token"], occurrence, "displayed", at=harness.clock.now())
+    await client.post(f"/api/v1/occurrences/{occurrence['id']}/snooze", json={"minutes": 5})
+    initial = len(harness.push.of_type("deliver"))
+    await harness.advance_and_run(minutes=5)
+    assert len(harness.push.of_type("deliver")) == initial + 1
+    detail = await _occurrence(client, occurrence["id"])
+    assert detail["deliveries"][0]["state"] == "provider_accepted"
+    assert detail["deliveries"][0]["displayed_at"] is None
+
+
+async def test_critical_opt_out_blocks_already_queued_retry(client, harness: Harness) -> None:
+    await register_device(client, push_token="critical-retry-registration")
+    settings = (await client.get("/api/v1/settings")).json()
+    preferences = {**settings["preferences"], "critical_alerts_enabled": True}
+    await client.patch("/api/v1/settings", json={"preferences": preferences})
+    harness.push.failures["critical-retry-registration"] = PushResult(
+        False, "fake", error_code="UNAVAILABLE", retryable=True
+    )
+    response = await client.post(
+        "/api/v1/notifications", json={"title": "Critical", "delivery_mode": "critical"}
+    )
+    assert response.status_code == 202
+    await harness.run_due()
+    attempts = len(harness.push.of_type("deliver"))
+    assert attempts > 0
+    await client.patch(
+        "/api/v1/settings", json={"preferences": {**preferences, "critical_alerts_enabled": False}}
+    )
+    await harness.advance_and_run(minutes=2)
+    assert len(harness.push.of_type("deliver")) == attempts
+
+
+async def test_primary_switch_blocks_retry_to_previous_primary(client, harness: Harness) -> None:
+    await register_device(
+        client, installation_id="primary-old", push_token="primary-old-registration"
+    )
+    tablet = await register_device(
+        client, installation_id="primary-new", push_token="primary-new-registration"
+    )
+    harness.push.failures["primary-old-registration"] = PushResult(
+        False, "fake", error_code="UNAVAILABLE", retryable=True
+    )
+    await client.post(
+        "/api/v1/notifications", json={"title": "Primary retry", "targets": {"strategy": "primary"}}
+    )
+    await harness.run_due()
+    attempts = len(harness.push.of_type("deliver"))
+    assert attempts > 0
+    await client.patch(f"/api/v1/devices/{tablet['device']['id']}", json={"is_primary": True})
+    await harness.advance_and_run(minutes=2)
+    assert len(harness.push.of_type("deliver")) == attempts

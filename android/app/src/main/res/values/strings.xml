@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">AgentPing</string>
+    <string name="setup_title">Android development ready</string>
+    <string name="setup_description">The development shell is installed. Reminders, notifications and alarms are not implemented yet.</string>
+</resources>

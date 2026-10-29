@@ -42,14 +42,20 @@ It never prints tokens.
 access work. It is **not** device delivery. A real FID can be passed with
 `--token-file` / `--token-kind fid` once an Android client exists.
 
-## Limitations
+## Android application verification
 
-- No Android app, so there is no local-schedule, exact-alarm, or on-device FCM test.
-- Neon Free adds ~1 s per query; the full pytest suite is meant for local
-  `test-db`, not the shared test branch.
-- `PUSH_PROVIDER=log` records payloads and never talks to Google.
-- MCP Inspector's per-launch auth URL must stay private.
-- Production branch is out of scope.
+See [Android README](../android/README.md), [manual matrix](android-manual-tests.md)
+and the dated [verification record](verification.md). `./dev android-check` runs
+APK assembly, five JVM policy tests and lint. Connected tests exercise Keystore,
+Room/cursor rollback, durable actions, expired-action rules, channels, real
+AlarmManager/ringing/deduplication/snooze/dismiss and all five UI destinations.
+Use a dedicated emulator and the explicit alarmDeliveryCheck argument to grant
+permissions; without it the actual alarm test may skip.
+
+Neon Free adds latency; run the regression suite against local `test-db`.
+`PUSH_PROVIDER=log` is suitable for stack-smoke but never contacts Google. Real
+MCP → phone probes use `compose.fcm.yaml` and report provider acceptance separately
+from device receipt/display. Production and the existing VM remain outside scope.
 
 ## Troubleshooting
 
@@ -61,3 +67,17 @@ access work. It is **not** device delivery. A real FID can be passed with
 | 401 on `/mcp` | Bearer token; `PUBLIC_BASE_URL` host allowed |
 | FCM `UNAUTHENTICATED` | `gcloud auth application-default login` then impersonation of `agentping-dev` |
 | Image contains `.env` | Build from repo root so `.dockerignore` applies |
+
+## Android commands
+
+```sh
+./dev android-check
+./dev android-test emulator-5554 \
+  -Pandroid.testInstrumentationRunnerArguments.backendHealthCheck=true \
+  -Pandroid.testInstrumentationRunnerArguments.alarmDeliveryCheck=true
+```
+
+The backend health test requires local Compose and ADB reverse. Keep actual test
+counts, failures and skips in verification.md. Pairing codes can be generated with
+`./dev compose exec -T api agentping-admin pairing-code`; Android stores only its
+issued device credential, never the owner token.

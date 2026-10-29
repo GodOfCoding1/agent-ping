@@ -161,6 +161,12 @@ async def sync(ctx: ServiceContext, cursor: int | None, *, limit: int = 500) -> 
     for row in rows:
         ids[row.entity_type].add(row.entity_id)
 
+    # Device preferences/primary selection change resolved targets even when the
+    # reminder revision is unchanged. Return a fresh replica so old local alarms
+    # are removed on the previous primary and installed on the new one.
+    if ids[SyncEntity.DEVICE.value] or ids[SyncEntity.SETTINGS.value]:
+        return await full_sync(ctx, user)
+
     occurrences = []
     if ids[SyncEntity.OCCURRENCE.value]:
         occurrences = list(
