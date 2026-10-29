@@ -1,7 +1,10 @@
 # Infrastructure requirements
 
-Nothing in this document is deployed. Paid provisioning still needs explicit
-approval. Budget: **INR 500/month or less**.
+The user authorized backend production deployment on 2026-10-29. The private
+Cloud Run/Cloud Tasks backend and Neon production schema are deployed and verified;
+see [production.md](production.md) for current infrastructure and costs. Budget:
+**INR 500/month or less**. The original local-only inventory and proposals below
+are historical and do not describe the current production deployment.
 
 ## What runs today
 

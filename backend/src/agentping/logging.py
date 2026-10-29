@@ -18,7 +18,18 @@ _SECRET_PATTERNS = [
     re.compile(r"\b(ap[adp]_)[A-Za-z0-9_-]{8,}"),
     re.compile(r"(password=)[^\s&]+", re.IGNORECASE),
 ]
-_REDACT_KEYS = {"token", "fcm_token", "authorization", "password", "body", "secret", "dsn"}
+_REDACT_KEYS = {
+    "token",
+    "fcm_token",
+    "authorization",
+    "password",
+    "body",
+    "secret",
+    "dsn",
+    "x-agentping-authorization",
+    "x-serverless-authorization",
+    "x-worker-token",
+}
 
 
 def redact(text: str) -> str:

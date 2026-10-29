@@ -21,6 +21,10 @@ does not block the queue.
 
 ## Waking the worker without polling Neon to death
 
+Production now uses Cloud Tasks at the actual next due time, plus hourly recovery;
+see [production.md](production.md). It has no continuous worker or LISTEN connection.
+The following direct-connection notes describe the local/long-running worker option.
+
 On a local or direct Postgres connection the worker `LISTEN`s and writers
 `NOTIFY`. PgBouncer transaction pooling cannot keep `LISTEN`, so
 `WORKER_LISTEN_DATABASE_URL` must be the **direct** endpoint.

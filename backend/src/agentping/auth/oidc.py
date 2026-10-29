@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -12,6 +13,8 @@ import jwt
 
 from agentping.config import Settings
 from agentping.domain.errors import Unauthenticated
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -76,6 +79,7 @@ class OidcVerifier:
                 leeway=30,
             )
         except jwt.PyJWTError as error:
+            logger.info("oidc_verification_rejected", extra={"error_type": type(error).__name__})
             raise Unauthenticated("Invalid or expired access token") from error
         raw_scopes = claims.get(self._settings.oidc_scope_claim) or claims.get("scope") or ""
         scopes = raw_scopes.split() if isinstance(raw_scopes, str) else list(raw_scopes)

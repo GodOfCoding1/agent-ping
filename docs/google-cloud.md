@@ -1,5 +1,15 @@
 # Google Cloud hosting decision and setup
 
+## Current status — 2026-10-29
+
+The user subsequently authorized backend production deployment and selected Google
+Cloud IAM first. The private Cloud Run backend, Google OIDC owner verification,
+Neon production schema, Cloud Tasks and hourly recovery scheduler are now deployed.
+Live REST/MCP/authentication/scheduled-dispatch checks pass. Android release is
+deferred. See [production.md](production.md) for the current configuration, actual
+verification results, cost assumptions and operational limits. The earlier setup
+and unapproved-plan sections below are historical and are superseded by this status.
+
 ## Budget revision and current decision
 
 The user set a deployment budget of **INR 500/month or less**. The previous

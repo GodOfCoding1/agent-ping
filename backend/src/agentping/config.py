@@ -8,6 +8,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any
 
+import certifi
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from sqlalchemy import URL, make_url
@@ -62,6 +63,7 @@ class Settings(BaseSettings):
     oidc_jwks_url: str = ""
     oidc_allowed_subjects: StrList = Field(default_factory=list)
     oidc_scope_claim: str = "scope"
+    application_token_header: str = "Authorization"
 
     push_provider: PushProvider = PushProvider.LOG
     firebase_project_id: str = ""
@@ -91,6 +93,8 @@ class Settings(BaseSettings):
     worker_max_attempts: int = 8
     maintenance_interval_seconds: int = 6 * 3600
     worker_trigger_token: SecretStr = SecretStr("")
+    cloud_tasks_queue: str = ""
+    cloud_tasks_invoker_email: str = ""
     worker_listen: bool = True
     worker_listen_database_url: SecretStr = SecretStr("")
 
@@ -119,6 +123,14 @@ class Settings(BaseSettings):
                 raise ValueError("PUBLIC_BASE_URL must use HTTPS in production")
         if self.auth_mode is AuthMode.OIDC and not (self.oidc_issuer and self.oidc_audience):
             raise ValueError("AUTH_MODE=oidc requires OIDC_ISSUER and OIDC_AUDIENCE")
+        if self.cloud_tasks_queue and not (
+            self.cloud_tasks_invoker_email and self.worker_trigger_token.get_secret_value()
+        ):
+            raise ValueError("Cloud Tasks requires an invoker identity and worker trigger token")
+        if self.cloud_tasks_queue and self.embedded_worker:
+            raise ValueError(
+                "Cloud Tasks and the continuous embedded worker are mutually exclusive"
+            )
         return self
 
     @property
@@ -179,6 +191,10 @@ def checked_database_url(raw: str, settings: Settings, *, migration: bool) -> UR
             raise DatabaseGuardError(
                 "Remote database host is not an API-verified development/test endpoint"
             )
+    if url.query.get("sslrootcert") == "system":
+        # psycopg's bundled libpq and the host may use different CA locations.
+        # Resolve the portable setting to the maintained CA bundle in this runtime.
+        url = url.update_query_dict({"sslrootcert": certifi.where()})
     return url.set(drivername="postgresql+psycopg")
 
 

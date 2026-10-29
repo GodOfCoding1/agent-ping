@@ -110,6 +110,7 @@ def create_app(
         RequestContextMiddleware,
         max_body=settings.max_request_bytes,
         require_https=production,
+        application_token_header=settings.application_token_header,
     )
     app.mount("/", mcp_app)
     return app

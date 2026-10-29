@@ -33,6 +33,10 @@ def build_runtime(
         session_factory=create_session_factory(engine),
         push=push or build_push_sender(settings),
     )
+    if settings.cloud_tasks_queue:
+        from agentping.worker.cloud_tasks import CloudTasksWakeup
+
+        runtime.work_notifier = CloudTasksWakeup(runtime).notify
     return runtime, engine
 
 

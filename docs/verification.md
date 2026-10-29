@@ -1,5 +1,29 @@
 # Verification record
 
+## Backend production deployment — 2026-10-29
+
+The user authorized production backend deployment and selected Google Cloud IAM.
+Cloud Run revision `agentping-api-00003-5tk`, Neon production Alembic `0002`,
+Cloud Tasks and hourly recovery are deployed. Live health/readiness, IAM denial,
+Google OIDC owner, scoped agent authorization, pairing/device sync, MCP (12 tools),
+idempotency and actual scheduled Cloud Tasks processing pass. The observed due-time
+delay was 2.3 seconds; no manual worker trigger was used for that verification.
+Test resources were cancelled/revoked/deactivated. A production export restored
+into disposable local PostgreSQL at schema `0002` with 16 tables; scratch database
+removed afterward. Local backend tests: **144 passed**, no skips; lint/type pass;
+doctor exit 0. Production helper lint/type and Linux/amd64 image build/push pass.
+The authenticated Scheduler recovery invocation completed with HTTP 200 and the
+job remains enabled hourly. The final revision had zero ERROR logs during the
+check. Source scan: 187 Git-eligible files, no actual credential matches;
+production credentials are ignored.
+
+The first hosted checks found Cloud Run's frontend intercepting `/healthz` and
+stripping the IAM JWT signature before application verification. The final revision
+uses `/health` and a separate independently verified application credential header.
+Both authorization layers remain enabled. See [production.md](production.md).
+Android production release and real production phone delivery remain deferred.
+The local-only infrastructure statements in earlier entries are historical.
+
 Final local application result (2026-10-29): **137 backend tests, 5 Android JVM
 tests, 11 emulator instrumentation tests (no skips), and one separate real
 Compose-editor/REST integration test pass**. Debug APK builds/lints and is installed

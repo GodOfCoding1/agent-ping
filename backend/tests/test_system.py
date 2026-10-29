@@ -10,7 +10,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import DBAPIError
 
-from tests.conftest import Harness, create_once, register_device
+from tests.conftest import DEV_TOKEN, Harness, create_once, register_device
 
 BACKEND = Path(__file__).resolve().parents[1]
 SCHEMA_HEAD = ScriptDirectory.from_config(Config(BACKEND / "alembic.ini")).get_current_head()
@@ -19,6 +19,7 @@ SCHEMA_HEAD = ScriptDirectory.from_config(Config(BACKEND / "alembic.ini")).get_c
 async def test_health_and_readiness(client) -> None:
     health = await client.get("/healthz", headers={"Authorization": ""})
     assert health.json()["status"] == "ok"
+    assert (await client.get("/health")).json()["status"] == "ok"
     ready = await client.get("/readyz", headers={"Authorization": ""})
     assert ready.status_code == 200
     assert ready.json()["schema_revision"] == SCHEMA_HEAD
@@ -55,6 +56,26 @@ async def test_oversized_body_rejected(client) -> None:
 @pytest.fixture
 def settings_overrides(request) -> dict:
     return getattr(request, "param", {})
+
+
+@pytest.mark.parametrize(
+    "settings_overrides", [{"application_token_header": "X-AgentPing-Authorization"}], indirect=True
+)
+async def test_application_token_is_independent_of_gateway_authentication(client) -> None:
+    denied = await client.get("/api/v1/settings")
+    assert denied.status_code == 401
+    accepted = await client.get(
+        "/api/v1/settings",
+        headers={
+            "Authorization": "Bearer gateway-credential",
+            "X-AgentPing-Authorization": f"Bearer {DEV_TOKEN}",
+        },
+    )
+    assert accepted.status_code == 200
+    denied = await client.get(
+        "/api/v1/settings", headers={"X-AgentPing-Authorization": "Bearer invalid"}
+    )
+    assert denied.status_code == 401
 
 
 @pytest.mark.parametrize(

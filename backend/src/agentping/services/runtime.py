@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -20,6 +21,8 @@ from agentping.db.models import User
 from agentping.domain.enums import ActionSource, ActorKind
 from agentping.domain.errors import NotFound, RateLimited
 from agentping.push.base import PushSender
+
+logger = logging.getLogger(__name__)
 
 
 class Clock(Protocol):
@@ -85,6 +88,7 @@ class Runtime:
     rate_limiter: RateLimiter | None = None
     signal: WorkerSignal = field(default_factory=WorkerSignal)
     after_commit_hooks: list[Callable[[], None]] = field(default_factory=list)
+    work_notifier: Callable[[], Awaitable[None]] | None = None
 
     def __post_init__(self) -> None:
         if self.rate_limiter is None:
@@ -118,6 +122,15 @@ class Runtime:
                 self.signal.notify()
                 for hook in self.after_commit_hooks:
                     hook()
+                if self.work_notifier and source is not ActionSource.SYSTEM:
+                    try:
+                        await self.work_notifier()
+                    except Exception as error:
+                        # The transaction is already committed. Recovery will rediscover the
+                        # durable outbox; reporting a write failure would invite duplicate writes.
+                        logger.error(
+                            "worker_wakeup_failed", extra={"error_type": type(error).__name__}
+                        )
 
 
 @dataclass

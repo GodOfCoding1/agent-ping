@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import timedelta
 from typing import Annotated, Any
@@ -25,7 +26,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/healthz", tags=["system"], summary="Liveness (does not touch the database)")
+@router.get("/health", tags=["system"], summary="Liveness (does not touch the database)")
+@router.get("/healthz", tags=["system"], include_in_schema=False)
 async def healthz() -> dict[str, str]:
     return {"status": "ok", "version": __version__}
 
@@ -168,5 +170,13 @@ async def run_worker(
     if not worker_token or not tokens.constant_time_equals(worker_token, expected):
         return error_response(401, "unauthenticated", "Invalid worker trigger token")
     worker = request.app.state.trigger_worker
-    processed = await worker.drain(max_batches=50)
+    try:
+        async with asyncio.timeout(85):
+            await worker.ensure_maintenance()
+            processed = await worker.drain(max_batches=50)
+            if runtime.work_notifier:
+                # A failed enqueue must fail this request so Cloud Tasks retries it.
+                await runtime.work_notifier()
+    except TimeoutError:
+        return error_response(503, "worker_timeout", "Worker will resume after retry")
     return WorkerRunResult(processed=processed, next_run_in_seconds=await worker.next_delay())

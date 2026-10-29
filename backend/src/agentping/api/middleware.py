@@ -41,16 +41,34 @@ async def _send_error(send: Send, status: int, code: str, message: str) -> None:
 class RequestContextMiddleware:
     """Assigns a request ID, enforces body limits/HTTPS and logs one line per request."""
 
-    def __init__(self, app: ASGIApp, *, max_body: int, require_https: bool) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        max_body: int,
+        require_https: bool,
+        application_token_header: str = "Authorization",
+    ) -> None:
         self.app = app
         self.max_body = max_body
         self.require_https = require_https
+        self.application_token_header = application_token_header.lower()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
         headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+        if self.application_token_header != "authorization":
+            # IAM consumes its bearer token at Google's frontend. Keep the application's
+            # independently verified credential in a separate header, for REST and MCP.
+            app_token = headers.get(self.application_token_header)
+            scope = dict(scope)
+            scope["headers"] = [
+                (k, v) for k, v in scope.get("headers", []) if k.lower() != b"authorization"
+            ]
+            if app_token:
+                scope["headers"].append((b"authorization", app_token.encode()))
         incoming = headers.get("x-request-id", "")
         request_id = (
             incoming if 8 <= len(incoming) <= 64 and incoming.isascii() else uuid.uuid4().hex
@@ -60,7 +78,7 @@ class RequestContextMiddleware:
         status_holder = {"status": 500}
         path = scope.get("path", "")
         try:
-            if self.require_https and path not in ("/healthz", "/readyz"):
+            if self.require_https and path not in ("/health", "/healthz", "/readyz"):
                 proto = headers.get("x-forwarded-proto", scope.get("scheme", "http"))
                 if proto != "https":
                     status_holder["status"] = 403
@@ -102,7 +120,7 @@ class RequestContextMiddleware:
                 status_holder["status"] = 413
                 await _send_error(send, 413, "payload_too_large", "Request body is too large")
         finally:
-            if path not in ("/healthz",):
+            if path not in ("/health", "/healthz"):
                 logger.info(
                     "request",
                     extra={

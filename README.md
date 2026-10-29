@@ -5,7 +5,9 @@ MCP-controlled notifications, reminders and alarms for the user's Android phones
 The **backend** (FastAPI, Streamable HTTP MCP, PostgreSQL outbox worker, FCM) is
 implemented and runs locally. The **Android app** implements pairing, Firebase
 notifications, offline sync/actions, local alarms and Material 3 reminder management. See [Android development](android/README.md). Production
-hosting is not deployed; Auth0/OIDC is deferred and required before public exposure.
+backend hosting is deployed privately on Cloud Run with Google Cloud IAM and
+Google OIDC owner authentication. Android production release/login remains deferred.
+See [production backend](docs/production.md) for access, verification and costs.
 Budget for any future hosting: INR 500/month or less.
 
 - [API](docs/api.md)
@@ -98,7 +100,9 @@ OIDC (`AUTH_MODE=oidc`) is wired but unused until Auth0 (or similar) is configur
 Streamable HTTP at `/mcp` (JSON responses, DNS-rebinding protection). Clients that
 only speak stdio should launch `agentping-mcp-stdio`. See [docs/mcp.md](docs/mcp.md).
 
-## Deferred production work
+## Deferred release work
 
-- Production DNS, Cloud Run/VM deployment, Railway (excluded)
-- Managed OAuth/OIDC login
+- Android production endpoint, signing and interactive OAuth/OIDC login
+- Optional custom DNS (the backend already has managed HTTPS)
+- Production phone FCM/alarm verification after the app is connected
+- Scheduled off-machine backups and longer operational observation

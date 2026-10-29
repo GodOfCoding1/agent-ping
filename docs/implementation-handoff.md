@@ -1,5 +1,11 @@
 # AgentPing implementation handoff
 
+Current update, 2026-10-29: the user subsequently authorized production backend
+deployment with Google Cloud IAM first. The private backend is deployed and live
+REST/MCP/scheduled-dispatch verification passed. See [production.md](production.md)
+for the deployed state, access and cost assumptions. Android release remains
+deferred. The development-only scope statements below describe the earlier phase.
+
 Full Android implementation and supporting backend fixes are authorized. Work is
 **development-only**: local Docker Compose API/PostgreSQL/worker, existing Firebase
 and USB/emulator. No hosting/deployment automation, paid resources, production
