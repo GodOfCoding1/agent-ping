@@ -3,8 +3,10 @@
 AgentPing is a native Material 3 application with one-time pairing, Keystore-backed
 device credentials, Firebase FID registration, immediate notifications, a Room
 replica and offline action queue, AlarmManager delivery, bounded escalation,
-reboot reconstruction and five functional screens. This is a **local development**
-application; managed production sign-in and hosting are deferred.
+reboot reconstruction and five functional screens. The signed production APK
+uses the live production HTTPS backend; debug builds use local Compose by default.
+Browser account login issues a one-time pairing code;
+the app stores only its own Keystore-encrypted device credential.
 
 ## Build and run
 
@@ -12,11 +14,9 @@ From the repository root, with the existing SDK and Android Studio JDK 21:
 
 ```sh
 ./dev android-setup
-./dev compose-env
-./dev compose -f compose.fcm.yaml up -d --build
-./dev android-check
+./dev android-release
 adb devices -l
-./dev android-run <serial>
+./dev android-production-run <serial>
 ```
 
 Open `android/` in Android Studio. Gradle wrapper 9.4.1, AGP 9.2.0, Kotlin/Compose
@@ -26,11 +26,55 @@ Dependencies are in `gradle/libs.versions.toml`: Room 2.8.5/KSP 2.3.10,
 WorkManager 2.12.0, DataStore 1.3.0, Retrofit 3.0.0, Compose BOM 2026.03.01 and
 Firebase BOM 35.1.0. Two Gradle workers / 2 GiB heap suit the existing Mac.
 
-APK: `android/app/build/outputs/apk/debug/app-debug.apk`.
+Production APK: `android/app/build/outputs/apk/release/app-release.apk`.
+Development APK: `android/app/build/outputs/apk/debug/app-debug.apk`.
 IDs: `com.errorfactory.agentping`, debug `com.errorfactory.agentping.debug`.
 No owner credential or `.env.local` is read by Android build commands.
 
-## Pair and grant permissions
+## Production pairing
+
+`./dev android-production-run <serial>` installs the signed release as **AgentPing**,
+package `com.errorfactory.agentping`. It uses production HTTPS directly and works
+without this Mac or USB after installation. It can coexist with **AgentPing Dev**,
+which has the separate `.debug` package and local data. Pair the production app
+once and make it primary in Devices.
+
+The production FCM sender restricts delivery to `com.errorfactory.agentping`.
+A debug APK can call the production API with an explicit URL override, but it
+cannot receive that sender's pushes because its package is different. Use the
+release APK for production phone delivery.
+
+Signing reads ignored `android/signing.properties`, with `storeFile`, `storePassword`,
+`keyAlias` and `keyPassword` entries. `storeFile` resolves relative to `android/`.
+This machine's private key is in `.agentping/android-signing/agentping-release.jks`;
+keep it and the properties file private and backed up to sign future app updates.
+No backend secret or `.env.local` is loaded. Without signing properties, Gradle
+can build an unsigned release; the production install helper requires signing.
+Store publication is outside this local phone installation workflow.
+
+1. Tap **Open account & get pairing code**. Sign in to your account at
+   [the production portal](https://agentping-api-583092569828.asia-southeast1.run.app/account)
+   and create a pairing code. Return to the app and enter the code with a device name.
+2. Allow notifications and enable exact alarm access in Settings → Device health.
+   The production package needs its own permissions; future updates preserve them.
+3. Pairing immediately starts Firebase registration and sync. The production device
+   should appear in the portal and the connected MCP client's `list_devices`.
+
+Credentials, installation IDs, pending actions and Room replicas are scoped by the
+full backend URL. The old local-only files are retained but are never imported
+into production; a local pairing cannot authorize a production account. Changing
+the URL needs a separate pairing. Within one package, theme preferences and OS
+permissions are shared; Android isolates the release and debug packages.
+
+## Local development pairing and permissions
+
+Build explicitly against Compose:
+
+```sh
+./dev compose-env
+./dev compose -f compose.fcm.yaml up -d --build
+./dev android-run <serial> -Pagentping.backendBaseUrl=http://127.0.0.1:8000/
+```
 
 1. Start the local Compose stack. Real FCM requires the overlay above and existing
    ADC impersonation; no Firebase service-account key is needed.
@@ -63,8 +107,9 @@ and settings changes require the server and retain their form on an error.
 Enable Developer options (tap Build number seven times), enable USB debugging,
 connect by USB, unlock and approve this Mac. `adb devices -l` must say `device`.
 Always provide a serial to `./dev android-run`, `android-device` and `android-test`.
-They establish `adb reverse tcp:8000 tcp:8000`. The default debug endpoint is
-`http://127.0.0.1:8000/`; no LAN exposure is required.
+Development helpers establish `adb reverse tcp:8000 tcp:8000` for the default
+`http://127.0.0.1:8000/`; no LAN exposure is required. The production install helper
+uses the fixed HTTPS endpoint and needs no reverse tunnel.
 
 For emulator direct access use the same property for build/run/test:
 
@@ -73,8 +118,9 @@ For emulator direct access use the same property for build/run/test:
 ```
 
 The URL must end in `/` and contain no credentials/query/fragment. Debug cleartext
-is allowed only on localhost, 127.0.0.1 and 10.0.2.2. Release has no endpoint and
-disallows cleartext. This task does not produce a production release configuration.
+is allowed only on localhost, 127.0.0.1 and 10.0.2.2. Remote endpoints require
+HTTPS. Release uses the fixed production origin and disallows cleartext. Private
+local release signing is supported; store publication is not configured.
 
 ## Tests
 
@@ -87,10 +133,14 @@ disallows cleartext. This task does not produce a production release configurati
   -Pandroid.testInstrumentationRunnerArguments.alarmDeliveryCheck=true
 ```
 
-Five JVM tests cover lateness/expiry/horizon, terminal/target policies, finite
-escalation, dedupe and quiet hours/DST. Eleven instrumentation tests cover environment,
+JVM tests cover backend identity isolation, lateness/expiry/horizon, terminal/target
+policies, finite escalation, dedupe and quiet hours/DST. Instrumentation tests
+cover backend credential/replica isolation, environment,
 Keystore, Room persistence, atomic replica/cursor rollback, offline overlays,
 real AlarmManager delivery/ringing/snooze/dismiss and screen navigation/editor.
+To test production reachability on the dedicated emulator, also pass
+`-Pagentping.backendBaseUrl=https://agentping-api-583092569828.asia-southeast1.run.app/`.
+The health opt-in checks public `/health`; protected `/readyz` needs credentials.
 Without permissions or the explicit alarm test flag, the alarm test may skip;
 always inspect test counts. Connected tests install/remove the test app, so use a
 dedicated emulator rather than a phone containing wanted app state.

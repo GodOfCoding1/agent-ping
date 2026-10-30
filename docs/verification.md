@@ -1,5 +1,56 @@
 # Verification record
 
+## Production Android cutover — 2026-10-30
+
+Signed, minified release APK **0.2.0**, package `com.errorfactory.agentping`, is
+installed on the Samsung SM-S926B. The user paired it through the Google-backed
+account portal and enabled notifications. It is the primary production device;
+FCM FID registration, server sync and exact alarm permission are verified.
+
+The real production notification at **09:45:33 Asia/Kolkata** passed the native
+Codex MCP → hosted API → event-triggered worker → FCM → phone path. Production
+records show provider acceptance at `04:15:33.521990Z`, device receipt at
+`04:15:33.972803Z` and display at `04:15:33.997927Z`. A `displayed` receipt is app
+posting evidence; physical sound was not independently observed. The release
+uses managed HTTPS directly, with no ADB reverse or local backend dependency.
+
+The first probe against the development `.debug` package returned FCM
+`INVALID_ARGUMENT`: the production sender restricts delivery to the release
+package. That test was cancelled. The signed release fixes the mismatch while
+preserving the sender restriction; no backend deployment/IAM/database migration
+was needed. The account's active device list now contains the release phone.
+
+| Command/check | Actual result |
+| --- | --- |
+| `./dev doctor`, `./dev imports`, `./dev db-check`, `./dev firebase-check` | Exit 0; guarded dev/test TLS and FCM validate-only pass; validate-only itself is not device delivery |
+| `./dev android-setup` | Exit 0; both existing Firebase package configurations validate |
+| `./dev android-check` | Exit 0; debug build/lint and **7 JVM tests** pass |
+| `./dev android-release` | Exit 0; signed release build, JVM tests and release lint pass; lint has 0 errors / 29 advisories |
+| Emulator instrumentation with production URL, health and alarm flags | Exit 0; **12 tests, 0 failures, 0 errors, 0 skips** on `emulator-5554`; includes credential/replica separation, HTTPS health and offline alarm delivery/snooze/dismiss |
+| `apksigner verify --verbose` | Exit 0; APK signature v2 verified; release package/version read back with `aapt2` |
+| `./dev android-production-run RZCXA1Y6HZZ` | Exit 0; release APK installed; Android reports version 0.2.0 without the debuggable flag |
+| Production pairing/MCP readback | Active primary release phone, valid FID, fresh sync, notifications and exact alarms allowed |
+| Real production immediate notification | FCM accepted, phone received and posted it; per-device `displayed` receipt |
+| `git diff --check`, `sh -n dev`, ignore checks | Exit 0; local signing key/properties and Firebase files ignored |
+
+The emulator health test first used `/healthz`, which Cloud Run intercepts with
+404. It was corrected to `/health`; all 12 tests passed on the subsequent run.
+The first emulator launch exited with its CLI process; running launch and tests
+within one command kept it alive through the test suite. No phone instrumentation
+suite was run against the user's paired production app.
+
+Backend credentials remain separate from Android builds. The release key is
+private under `.agentping/android-signing/`; `android/signing.properties` is
+ignored. Preserve both for future signed updates. Debug and release package data
+are isolated; within each package credentials, installation IDs, pending actions
+and Room databases are also scoped by backend URL. Legacy unscoped local files
+are retained and never imported into production.
+
+Physical scheduled alarm sound, production offline/reboot scenarios and watch
+bridging were not re-tested in this cutover. Existing battery optimization remains
+active. Store publication and the second independent live-user launch gate remain
+open. See [Android build/pairing instructions](../android/README.md).
+
 ## Backend production deployment — 2026-10-29
 
 The user authorized production backend deployment and selected Google Cloud IAM.

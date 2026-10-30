@@ -23,6 +23,7 @@ firebase-debug*.log
 *.jks
 *.keystore
 android/local.properties
+android/signing.properties
 **/.gradle/
 **/.kotlin/
 **/build/

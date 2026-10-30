@@ -2,6 +2,7 @@ package com.errorfactory.agentping.data
 
 import android.content.Context
 import androidx.room.*
+import com.errorfactory.agentping.BuildConfig
 import kotlinx.coroutines.flow.Flow
 
 @androidx.room.Entity(tableName = "entities", primaryKeys = ["kind", "id"])
@@ -78,7 +79,12 @@ abstract class LocalDatabase : RoomDatabase() {
     abstract fun store(): Store
 
     companion object {
-        fun open(context: Context) =
-            Room.databaseBuilder(context, LocalDatabase::class.java, "agentping.db").build()
+        fun open(context: Context, baseUrl: String = BuildConfig.BACKEND_BASE_URL) =
+            Room.databaseBuilder(
+                    context,
+                    LocalDatabase::class.java,
+                    BackendScope(baseUrl).databaseName,
+                )
+                .build()
     }
 }

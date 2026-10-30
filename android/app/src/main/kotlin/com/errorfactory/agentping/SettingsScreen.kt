@@ -459,12 +459,12 @@ fun SettingsScreen(entities: List<Entity>) {
                 scope.launch { localPrefs.theme(value) }
             }
             Text(
-                "Development server: ${BuildConfig.BACKEND_BASE_URL}",
+                "Server: ${BuildConfig.BACKEND_BASE_URL}",
                 style = MaterialTheme.typography.bodySmall,
             )
             OutlinedButton(onClick = { pairAgain = true }) { Text("Pair this phone again") }
             Text(
-                "Device credentials are encrypted with Android Keystore and excluded from backup. Development authentication is for the local server; production sign-in is deferred.",
+                "Sign in through the account portal to get a one-time pairing code. Device credentials are encrypted with Android Keystore, bound to this server and excluded from backup.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }

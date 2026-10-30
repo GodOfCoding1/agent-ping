@@ -77,8 +77,33 @@ fun PairingScreen() {
             Text(status)
             if (!paired) {
                 Text(
-                    "Generate a one-time pairing code on your local AgentPing server. Only this phone’s credential is stored here, encrypted by Android Keystore.",
+                    if (BuildConfig.LOCAL_BACKEND)
+                        "Generate a one-time pairing code on your local AgentPing server."
+                    else
+                        "Sign in to your AgentPing account in your browser, create a pairing code, then enter it here. Only this phone’s credential is stored here, encrypted by Android Keystore.",
                 )
+                Text(
+                    "Server: ${java.net.URI(BuildConfig.BACKEND_BASE_URL).host}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (!BuildConfig.LOCAL_BACKEND) {
+                    OutlinedButton(
+                        onClick = {
+                            context.startActivity(
+                                android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse(
+                                        java.net.URI(BuildConfig.BACKEND_BASE_URL)
+                                            .resolve("account")
+                                            .toString(),
+                                    ),
+                                ),
+                            )
+                        },
+                    ) {
+                        Text("Open account & get pairing code")
+                    }
+                }
                 OutlinedTextField(
                     name,
                     { name = it },
@@ -103,9 +128,11 @@ fun PairingScreen() {
                                 paired = true
                                 code = ""
                                 SyncWork.periodic(context)
+                                repo.registerPush()
+                                SyncWork.enqueue(context)
                             } catch (e: Exception) {
                                 error =
-                                    "Pairing failed. Check the code, expiry and local server connection."
+                                    "Pairing failed. Check the code, expiry and server connection."
                             } finally {
                                 busy = false
                             }

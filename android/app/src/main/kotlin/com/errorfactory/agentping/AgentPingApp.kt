@@ -16,7 +16,7 @@ class AgentPingApp : Application() {
             this,
             db,
             secrets,
-            api(BuildConfig.BACKEND_BASE_URL.ifBlank { "https://localhost/" }, secrets),
+            api(BuildConfig.BACKEND_BASE_URL, secrets),
         )
     }
 

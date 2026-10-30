@@ -1,9 +1,10 @@
 # Production backend
 
-Updated 2026-10-29. The backend is live with Auth0 browser OAuth and independent
+Updated 2026-10-30. The backend is live with Auth0 browser OAuth and independent
 user accounts. **The two-live-user public launch gate remains open** because only
 one Google account is available. Automated account-isolation tests pass; do not
-represent those as two independent live Google sign-ins. Android release remains deferred.
+represent those as two independent live Google sign-ins. The signed Android
+release uses production with browser account pairing; store publication remains deferred.
 
 ## Verified deployment
 
@@ -53,12 +54,25 @@ Codex configuration, explicit deployment commands and rollback. The
 not current access instructions. Private receipts and token material remain in
 ignored `.agentping/production/`; no credentials belong in documentation.
 
+## Production Android — 2026-10-30
+
+Signed APK 0.2.0 (`com.errorfactory.agentping`) is installed on the Samsung and
+paired through Google account login in the account portal. It is the primary
+production device. A real Codex → MCP → Cloud Tasks worker → FCM test returned
+provider acceptance, device receipt and a `displayed` receipt. The original debug
+package was incompatible with the production sender's package restriction; the
+release APK matches that restriction without changing the backend.
+
+Private local APK signing is configured; keys/properties are ignored and never
+loaded from backend `.env.local`. See [Android instructions](../android/README.md).
+
 ## Remaining checks
 
 A second independent live user must verify login and account isolation before
-closing the public launch gate. Android needs the production endpoint/account
-flow, release signing and real-device delivery/alarm checks. Regular encrypted
-off-machine backups and measured billing observation are still operational work.
+closing the public launch gate. Store publication, physical scheduled alarm sound,
+offline actions and reboot recovery against production remain separate checks.
+Regular encrypted off-machine backups and measured billing observation are still
+operational work.
 
 ## Cost and verification basis
 

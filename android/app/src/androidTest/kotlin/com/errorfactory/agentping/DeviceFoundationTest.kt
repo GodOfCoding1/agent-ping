@@ -25,11 +25,46 @@ class DeviceFoundationTest {
             first.token = "apd_instrumentation_credential"
             assertEquals("apd_instrumentation_credential", SecureStore(testContext).token)
             val raw =
-                testContext.getSharedPreferences("device_identity", 0).getString("credential", "")!!
+                testContext
+                    .getSharedPreferences(BackendScope(BuildConfig.BACKEND_BASE_URL).preferencesName, 0)
+                    .getString("credential", "")!!
             assertFalse(raw.contains("apd_instrumentation"))
             assertEquals(first.installationId, SecureStore(testContext).installationId)
         } finally {
             first.token = saved
+        }
+    }
+
+    @Test
+    fun credentialsAndReplicaCannotCrossBackends() = runBlocking {
+        val testContext = context.createDeviceProtectedStorageContext()
+        val localUrl = "http://127.0.0.1:8000/isolation-test/"
+        val remoteUrl = "https://example.invalid/isolation-test/"
+        val local = SecureStore(testContext, localUrl)
+        val remote = SecureStore(testContext, remoteUrl)
+        val localDb = LocalDatabase.open(testContext, localUrl)
+        val remoteDb = LocalDatabase.open(testContext, remoteUrl)
+        try {
+            local.token = "apd_local_only"
+            local.deviceId = "local-device"
+            localDb.store().put(Entity("reminder", "local-reminder", "{}"))
+            localDb.store().queue(Pending("local-action", "action", "{}", 1))
+            assertNull(remote.token)
+            assertEquals("", remote.deviceId)
+            assertNotEquals(local.installationId, remote.installationId)
+            assertTrue(remoteDb.store().list("reminder").isEmpty())
+            assertTrue(remoteDb.store().pending().isEmpty())
+            remote.token = "apd_remote_only"
+            assertEquals("apd_local_only", SecureStore(testContext, localUrl).token)
+            assertEquals("apd_remote_only", SecureStore(testContext, remoteUrl).token)
+        } finally {
+            localDb.close()
+            remoteDb.close()
+            for (url in listOf(localUrl, remoteUrl)) {
+                val scope = BackendScope(url)
+                testContext.deleteSharedPreferences(scope.preferencesName)
+                testContext.deleteDatabase(scope.databaseName)
+            }
         }
     }
 

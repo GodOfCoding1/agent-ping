@@ -33,10 +33,10 @@ class EnvironmentSmokeTest {
     }
 
     @Test
-    fun localBackendIsReachableWhenRequested() {
+    fun configuredBackendIsReachableWhenRequested() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("backendHealthCheck") == "true")
         val connection =
-            URI(BuildConfig.BACKEND_BASE_URL).resolve("readyz").toURL().openConnection()
+            URI(BuildConfig.BACKEND_BASE_URL).resolve("health").toURL().openConnection()
                 as HttpURLConnection
         try {
             connection.connectTimeout = 10_000

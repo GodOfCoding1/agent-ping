@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import com.errorfactory.agentping.BuildConfig
 import java.security.KeyStore
 import java.util.UUID
 import javax.crypto.Cipher
@@ -12,8 +13,9 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** AES-GCM device credential, non-exportable Keystore key, no backup or logging. */
-class SecureStore(context: Context) {
-    private val prefs = context.getSharedPreferences("device_identity", Context.MODE_PRIVATE)
+class SecureStore(context: Context, baseUrl: String = BuildConfig.BACKEND_BASE_URL) {
+    private val prefs =
+        context.getSharedPreferences(BackendScope(baseUrl).preferencesName, Context.MODE_PRIVATE)
     private val alias = "agentping.device.v1"
 
     private fun key(): SecretKey {

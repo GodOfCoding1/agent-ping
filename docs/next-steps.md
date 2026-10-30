@@ -1,12 +1,12 @@
 # Next steps for AgentPing
 
-Updated 2026-10-29. The backend is deployed with Auth0 OAuth and user accounts.
+Updated 2026-10-30. The backend is deployed with Auth0 OAuth and user accounts.
 Codex is configured and its native browser login succeeded with refresh permission.
 See [production evidence/costs](production.md) and [OAuth operations](production-oauth-operations.md).
 
-1. Start a new Codex chat so it loads the `agentping` MCP server. Try
-   `get_schedule_context` and `list_devices`. Reminders can be stored now; no
-   production phone is paired, so phone notification/alarm delivery is not ready.
+1. Codex MCP and the signed Samsung production app are connected. A live test
+   passed worker/FCM delivery, device receipt and display on 2026-10-30.
+   Use `get_schedule_context`, `list_devices` and the notification/reminder tools.
 2. Use the [account portal](https://agentping-api-583092569828.asia-southeast1.run.app/account)
    to pair a phone, inspect grants, revoke an agent or explicitly allow a new login.
    Reapproval requires a fresh token; old tokens stay invalid. Account closure
@@ -14,9 +14,11 @@ See [production evidence/costs](production.md) and [OAuth operations](production
 3. Have a second independent Google account complete login and verify isolation.
    Automated two-user tests pass, but this live acceptance gate remains open
    because only one Google account was available during deployment.
-4. Move Android to the production endpoint/account flow, configure release signing
-   and Firebase identity, then prove Codex → MCP → worker → FCM → the correct phone.
-   Verify device receipt, display, sound, offline actions and reboot recovery separately.
+4. The signed Android release uses production and browser account pairing.
+   Install updates with `./dev android-production-run <serial>`. Local release
+   signing is supported; preserve the private key for future updates. Store
+   publication remains deferred. Physical scheduled alarm sound, offline actions
+   and reboot recovery against production still need separate verification.
 5. Arrange regular encrypted off-machine backups and restore drills, monitor queue
    failures and measure billing before increasing usage.
 

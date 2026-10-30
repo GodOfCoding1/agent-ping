@@ -7,8 +7,9 @@ implemented and runs locally. The **Android app** implements pairing, Firebase
 notifications, offline sync/actions, local alarms and Material 3 reminder management. See [Android development](android/README.md). Production
 backend hosting uses Cloud Run with Auth0 OAuth, independent user accounts and a
 separate IAM-private worker. Native Codex login, live refresh, MCP tools, portal access and revocation checks
-have succeeded; a second live user is still needed to close the public launch gate. Android production
-release/login remains deferred. See [OAuth operations](docs/production-oauth-operations.md),
+have succeeded; a second live user is still needed to close the public launch gate.
+The signed Android release uses that production backend and browser account pairing.
+Local release signing is configured; store publication remains deferred. See [OAuth operations](docs/production-oauth-operations.md),
 [next steps](docs/next-steps.md) and [production cost evidence](docs/production.md).
 Deployment budget: INR 500/month or less.
 
@@ -83,7 +84,8 @@ uv run --project backend --locked mypy --config-file backend/pyproject.toml back
 ./dev android-check
 ./dev android-emulator
 adb devices -l
-./dev android-run <serial>
+./dev android-run <serial>             # local development
+./dev android-production-run <serial>  # signed production APK
 ./dev android-test <serial>
 ```
 
@@ -107,7 +109,7 @@ only speak stdio should launch `agentping-mcp-stdio`. See [docs/mcp.md](docs/mcp
 
 ## Deferred release work
 
-- Android production endpoint, signing and interactive OAuth/OIDC login
+- Android store publication
 - Optional custom DNS (the backend already has managed HTTPS)
-- Production phone FCM/alarm verification after the app is connected
+- Production scheduled alarm sound, offline actions and reboot verification
 - Scheduled off-machine backups and longer operational observation
