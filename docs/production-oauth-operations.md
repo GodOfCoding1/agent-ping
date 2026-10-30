@@ -1,6 +1,6 @@
 # Production OAuth operations
 
-Updated 2026-10-29. Native Codex login, live refresh, portal login and revocation
+Updated 2026-10-30. Native Codex login, live refresh, portal login and revocation
 checks pass. The second-live-user acceptance gate remains open because only one
 Google account was available. Do not call that gate complete until the second
 independent live sign-in and isolation check is recorded.
@@ -36,11 +36,67 @@ are configured;
 adding it later requires a production-supported email provider, rather than Auth0's
 built-in testing email service.
 
-Auth0 is in its signup trial. The implementation uses public-client PKCE, database
-account records and social sign-in; no paid upgrade or Enterprise-only private-key
-CIMD client is required. The current Codex registration is explicit, with no open
-DCR or automatic CIMD registration dependency. Additional MCP client applications
-must be registered and granted only MCP scopes; never grant them the account API.
+Auth0 is in its signup trial. Automatic MCP client onboarding uses standard Dynamic
+Client Registration (DCR), user consent and PKCE. No paid upgrade or Early Access
+dynamic CIMD feature is required. The existing explicit Codex client remains valid.
+
+## Automatic MCP client connection
+
+Add `https://agentping-api-583092569828.asia-southeast1.run.app/mcp` in a client
+that supports OAuth discovery and DCR. Choose OAuth and automatic/dynamic client
+registration; leave manually supplied client credentials empty. Sign in with the
+same Google account used to pair the phone, then approve the requested permissions.
+New applications register themselves; an administrator does not create a client
+or a per-application grant for each one.
+
+Auth0 discovery advertises `/oidc/register`. Tenant setting
+`flags.enable_dynamic_client_registration` is true and
+`client_id_metadata_document_supported` is false. Advertising CIMD without automatic
+onboarding caused ChatGPT's `Unknown client: https://chatgpt.com/oauth/client.json`
+failure. For a connection that cached the previous CIMD flow, select DCR or recreate
+the failed MCP connection so it discovers the updated settings. Existing working
+Codex connections do not need recreation.
+
+One default Auth0 grant (`default_for: third_party_clients`, `subject_type: user`)
+allows new third-party applications to request only the five MCP scopes above for
+the `/mcp` audience. Users still sign in and consent. There is no third-party default
+grant for the account API or machine-to-machine access. APIs retain per-app grant
+enforcement, RS256 RFC 9068 access tokens, 600-second access-token lifetimes and
+mandatory consent. The backend creates each user/client agent grant on its first
+authenticated request, and still enforces local revocation and owner/client isolation.
+
+Configure or inspect this policy without rerunning provider bootstrap:
+
+```sh
+uv run --project backend --locked python infra/auth0_onboarding.py status
+uv run --project backend --locked python infra/auth0_onboarding.py configure
+uv run --project backend --locked python infra/oauth_dcr_smoke.py
+```
+
+`configure` validates the API/consent boundaries before writing, installs the limited
+default grant before opening registration, and confirms the result by reading it
+back. It is idempotent and preserves existing explicit clients and grants. Each
+pre-change snapshot is saved privately with a timestamp. The general
+`auth0_setup.py` bootstrap also reapplies this policy so it does not restore the
+broken CIMD advertisement.
+
+The live smoke registers one reusable public verification client anonymously and
+checks strict third-party policy, absence of manual client grants, public discovery
+and progression to browser login. It does not complete browser consent, exchange
+codes or call tools as a user. Real ChatGPT login/tool use is a separate acceptance
+check. Verification clients and receipts are kept in ignored private storage.
+
+Verified on 2026-10-30: the provider policy read-back and anonymous DCR smoke passed.
+Both OAuth and OIDC discovery advertise DCR. The new public client receives rotating,
+expiring refresh tokens (30-day maximum, 15-day idle lifetime), requires no token
+endpoint client authentication, and loads Google browser login without a manual
+client grant. The local suite passes 190 tests, including new-client grant isolation,
+revocation, idempotent configuration and rejection of unsafe default grants. This
+change only updates Auth0 configuration; it does not require an API redeployment.
+
+Provider references: [Auth0 DCR](https://auth0.com/docs/get-started/applications/dynamic-client-registration),
+[default third-party permissions](https://auth0.com/docs/get-started/applications/third-party-applications/configure-third-party-applications#default-permissions-for-all-third-party-applications),
+[OpenAI client registration](https://developers.openai.com/plugins/build/auth#client-registration).
 
 ## Native Codex connection
 

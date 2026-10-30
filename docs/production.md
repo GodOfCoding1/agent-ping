@@ -8,7 +8,7 @@ release uses production with browser account pairing; store publication remains 
 
 ## Verified deployment
 
-- API/MCP: `agentping-api-00008-xs9`,
+- API/MCP: `agentping-api-00009-fj9`,
   [HTTPS endpoint](https://agentping-api-583092569828.asia-southeast1.run.app).
 - Worker: `agentping-worker-00004-btl`, IAM-private, on a separate service.
 - Database: schema `0004`; separate migrator/runtime roles, verified DML grants,
@@ -23,6 +23,13 @@ release uses production with browser account pairing; store publication remains 
 
 ## Evidence
 
+- 2026-10-30: MCP setup guidance deployed to the API with 100% traffic. The live
+  `/account` and `/` pages show the server name, URL, selectable description,
+  transport and sign-in guidance. Health and OAuth metadata return 200; missing
+  and invalid credentials still return 401 for protected REST/MCP, and the worker
+  route remains absent from the API (404). The image-only rollout preserved the
+  API's environment, secret references, service identity, resources and scaling.
+  Receipt: ignored `.agentping/production/mcp-guidance-deployment-verification.json`.
 - **180 tests passed**, no skips. Backend Ruff/format/mypy and deployment-helper
   Ruff/mypy pass. Linux/amd64 image built locally and deployed successfully.
 - Native `codex mcp login agentping` completed through the real browser flow,

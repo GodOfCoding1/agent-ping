@@ -29,8 +29,10 @@ USER_SCOPES = {
 }
 
 
-def api(method: str, path: str, data: Any = None) -> Any:
+def api(method: str, path: str, data: Any = None, *, query: dict[str, str] | None = None) -> Any:
     args = ["auth0", "api", method, path, "--tenant", DOMAIN, "--json", "--reveal-secrets"]
+    for key, value in (query or {}).items():
+        args += ["--query", f"{key}={value}"]
     if data is not None:
         args += ["--data", "@-"]
     raw = run(args, input_=json.dumps(data) if data is not None else None)
@@ -47,7 +49,6 @@ def configure() -> None:
             "friendly_name": "AgentPing",
             "resource_parameter_profile": "compatibility",
             "authorization_response_iss_parameter_supported": True,
-            "client_id_metadata_document_supported": True,
         },
     )
     servers = api("get", "resource-servers")
@@ -183,6 +184,9 @@ def configure() -> None:
             "codex_callback_port": 8743,
         },
     )
+    from auth0_onboarding import configure_onboarding
+
+    configure_onboarding()
     print("Auth0 APIs and clients configured; confidential state saved privately.")
     print("Account client:", portal["client_id"])
     print("Codex public client:", configured[1]["client_id"])

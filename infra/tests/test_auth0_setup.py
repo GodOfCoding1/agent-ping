@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 
+import auth0_onboarding
 import auth0_setup
 
 
@@ -35,7 +36,10 @@ def test_provider_configuration_pins_id_and_access_token_algorithms(monkeypatch,
     monkeypatch.setattr(auth0_setup, "api", api)
     monkeypatch.setattr(auth0_setup, "PRIVATE", tmp_path)
     monkeypatch.setattr(auth0_setup, "save", lambda *args: None)
+    onboarding = []
+    monkeypatch.setattr(auth0_onboarding, "configure_onboarding", lambda: onboarding.append(True))
     auth0_setup.configure()
+    assert onboarding == [True]
     assert len(clients) == 2
     assert all(c["jwt_configuration"]["alg"] == "RS256" for c in clients.values())
     resources = [

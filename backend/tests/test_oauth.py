@@ -159,6 +159,32 @@ async def test_permissions_claim_cannot_expand_consent(auth, token):
     assert principal.scopes == {Scope.REMINDERS_READ}
 
 
+async def test_new_oauth_clients_onboard_without_owner_access(auth, token, harness):
+    first = await auth.authenticate(
+        token(client="tpc_new-client-a", scopes=USER_SCOPES), for_mcp=True
+    )
+    second = await auth.authenticate(token(client="tpc_new-client-b"), for_mcp=True)
+    again = await auth.authenticate(token(client="tpc_new-client-a"), for_mcp=True)
+    assert first.actor_kind is second.actor_kind is ActorKind.AGENT
+    assert first.user_id == second.user_id
+    assert first.agent_client_id == again.agent_client_id != second.agent_client_id
+    assert first.scopes == second.scopes == DEFAULT_AGENT_SCOPES
+    assert Scope.AGENTS_MANAGE not in first.scopes
+    # Even a provider-signed account-audience JWT for a new third-party client
+    # cannot promote it into the first-party owner role.
+    account = await auth.authenticate(
+        token(client="tpc_new-client-a", audience=API, scopes=USER_SCOPES)
+    )
+    assert account.actor_kind is ActorKind.AGENT
+    assert Scope.AGENTS_MANAGE not in account.scopes
+    async with harness.runtime.session_factory() as session, session.begin():
+        row = await session.get(AgentClient, first.agent_client_id)
+        row.status = "revoked"
+    with pytest.raises(Unauthenticated):
+        await auth.authenticate(token(client="tpc_new-client-a"), for_mcp=True)
+    assert (await auth.authenticate(token(client="tpc_new-client-b"), for_mcp=True)).agent_client_id
+
+
 async def test_client_and_audience_do_not_become_owner(auth, token):
     agent = await auth.authenticate(token(client="codex", scopes=USER_SCOPES), for_mcp=True)
     assert agent.actor_kind is ActorKind.AGENT
