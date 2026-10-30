@@ -22,6 +22,7 @@ from agentping.auth.principal import USER_SCOPES, Principal
 from agentping.config import Settings
 from agentping.db.models import PortalLogin, PortalSession, User
 from agentping.domain.errors import Forbidden, Unauthenticated
+from agentping.mcp.metadata import MCP_DESCRIPTION, MCP_NAME
 from agentping.services import accounts, agents, devices
 
 router = APIRouter(include_in_schema=False)
@@ -75,6 +76,8 @@ section{{background:white;border:1px solid #dde3ef;border-radius:16px;padding:24
 a{{color:#3456bb}}button,.button{{font:inherit;background:#294ac5;color:white;border:0;
 border-radius:8px;padding:10px 18px;cursor:pointer;text-decoration:none;display:inline-block}}
 button.danger{{background:#a02b36}}small{{color:#5c6980}}code{{overflow-wrap:anywhere}}
+textarea{{box-sizing:border-box;width:100%;font:inherit;padding:12px;border:1px solid #dde3ef;
+border-radius:8px;resize:vertical}}label{{display:block;font-weight:600}}
 .row{{padding:16px 0;border-bottom:1px solid #e6eaf1}}
 nav{{display:flex;justify-content:space-between}}
 form{{display:inline}}.code{{font-size:30px;letter-spacing:3px;font-weight:bold}}</style>
@@ -297,7 +300,32 @@ async def _session(request: Request, *, csrf: bool = False) -> tuple[Principal, 
     return principal, data["csrf"], digest
 
 
+def _connection_guide(settings: Settings) -> str:
+    return (
+        "<section><h2>Connect your agent</h2>"
+        "<p>When adding this MCP server in your AI app, use these values. "
+        "If it asks for a description or instructions for the agent, "
+        "select and copy the suggested text below.</p>"
+        "<p><b>Name</b><br><code>" + html.escape(MCP_NAME) + "</code></p>"
+        "<p><b>MCP server URL</b><br><code>"
+        + html.escape(settings.mcp_resource_url)
+        + "</code></p><p><b>Transport</b><br>Streamable HTTP (if asked)</p>"
+        '<label for="mcp-description">Description / agent instructions</label>'
+        '<textarea id="mcp-description" rows="7" readonly aria-describedby="mcp-description-help">'
+        + html.escape(MCP_DESCRIPTION)
+        + '</textarea><small id="mcp-description-help">Select and copy this text into your '
+        "AI app. It describes when the agent should use AgentPing.</small>"
+        "<p><b>Authentication</b><br>OAuth / browser sign-in. Use the same AgentPing account "
+        "you use to pair your phone. Your MCP application needs a registered OAuth client; "
+        "use its assigned client ID if asked. A description does not grant access.</p>"
+        "<p>Pair your phone from this account page and enable notifications in the Android "
+        "app before asking your agent to send an alert. Access applies only to your account.</p>"
+        "</section>"
+    )
+
+
 async def _account(request: Request, *, message: str = "") -> Response:
+    runtime = request.app.state.runtime
     try:
         principal, csrf, _ = await _session(request)
     except Unauthenticated:
@@ -305,9 +333,9 @@ async def _account(request: Request, *, message: str = "") -> Response:
             "Your agents. Your devices.",
             "<section><p>Sign in to connect an AI agent, "
             "pair your phone and manage access to your notifications and reminders.</p>"
-            '<a class="button" href="/login">Sign in or create an account</a></section>',
+            '<a class="button" href="/login">Sign in or create an account</a></section>'
+            + _connection_guide(runtime.settings),
         )
-    runtime = request.app.state.runtime
     async with runtime.unit(principal) as ctx:
         user = await ctx.session.get(User, principal.user_id)
         agent_rows = await agents.list_agents(ctx)
@@ -316,9 +344,8 @@ async def _account(request: Request, *, message: str = "") -> Response:
         f"<p>Signed in as {html.escape(user.display_name or user.email or 'AgentPing user')}</p>"
     )
     content += message
-    content += "<section><h2>Connect your agent</h2><p>MCP server URL</p><code>"
-    content += html.escape(runtime.settings.mcp_resource_url) + "</code><p>Use the registered "
-    content += "OAuth client for your MCP application. Access applies only to this account.</p>"
+    content += _connection_guide(runtime.settings)
+    content += "<section><h2>Connected agents</h2>"
     for agent in agent_rows:
         content += (
             f'<div class="row"><b>{html.escape(agent.name)}</b> · {html.escape(agent.status)}'

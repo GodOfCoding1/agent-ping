@@ -55,6 +55,7 @@ from agentping.domain.schemas import (
     TargetSelection,
     UpdateReminderResult,
 )
+from agentping.mcp.metadata import MCP_DESCRIPTION, MCP_NAME
 from agentping.services import activity, devices, reminders
 from agentping.services.occurrences import apply_action
 from agentping.services.runtime import Runtime, ServiceContext
@@ -63,8 +64,10 @@ from agentping.services.views import occurrence_view
 
 logger = logging.getLogger(__name__)
 
-INSTRUCTIONS = """\
-AgentPing delivers notifications, reminders and alarms to the user's Android phones.
+INSTRUCTIONS = (
+    MCP_DESCRIPTION
+    + "\n\n"
+    + """\
 
 Choosing a tool:
 - Something should reach the user NOW -> send_notification.
@@ -86,6 +89,7 @@ timezone and current time if unsure.
 not proof that the phone received it. Use get_reminder to see delivery state.
 Always pass an idempotency_key when retrying a create/send call.
 """
+)
 
 
 class PrincipalAccessToken(AccessToken):
@@ -145,7 +149,7 @@ def build_mcp_server(runtime: Runtime, authenticator: Authenticator) -> MCPServe
     )
     server: MCPServer = MCPServer(
         "agentping",
-        title="AgentPing",
+        title=MCP_NAME,
         instructions=INSTRUCTIONS,
         version=__version__,
         token_verifier=AgentPingTokenVerifier(authenticator),

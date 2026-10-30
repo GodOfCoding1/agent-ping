@@ -12,6 +12,25 @@ requires no Google Cloud role or IAM helper. The worker remains IAM-private.
 The token examples below also support local development and explicitly issued
 scoped agent credentials.
 
+## Name and description when adding the MCP server
+
+Use **AgentPing** for the name and `{PUBLIC_BASE_URL}/mcp` for the server URL.
+Choose **Streamable HTTP** if your client asks for a transport. For a description
+or agent-instructions field, paste:
+
+> Use AgentPing when I ask to receive a notification, reminder or alarm on my paired
+> Android devices. Send immediate alerts, schedule one-time or recurring reminders
+> and alarms, and manage existing reminders. Use my timezone for scheduling.
+> Only send or schedule alerts when I request them, and distinguish queued alerts
+> from confirmed device delivery.
+
+The account portal at `/account` shows these values, including the configured
+server URL, before and after sign-in. Production uses OAuth browser sign-in with
+your MCP application's registered client; sign in to the same account used to
+pair your phone. See the [Codex connection configuration](production-oauth-operations.md#native-codex-connection)
+for its public client ID and callback settings. The description itself is not a
+credential. AgentPing also supplies these instructions during MCP initialization.
+
 AgentPing exposes tools over the [official MCP Python SDK](https://py.sdk.modelcontextprotocol.io/)
 using Streamable HTTP at `/mcp` (`stateless_http`, JSON responses). DNS-rebinding
 protection is always on. Allowed hosts/origins come from `MCP_ALLOWED_HOSTS` /
